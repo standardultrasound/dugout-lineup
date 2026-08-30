@@ -1,0 +1,2827 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0F2440">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Dugout Lineup">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Dugout Lineup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:#F1F4F8;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;color:#0F2440;overscroll-behavior:none;-webkit-tap-highlight-color:transparent}
+button{font-family:inherit;cursor:pointer}
+input,select,textarea{font-family:inherit;color:#0F2440}
+a{color:#1D4ED8;text-decoration:none}
+a:hover{color:#14349B}
+*:focus-visible{outline:3px solid #2563EB;outline-offset:2px}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:rgba(15,36,64,.22);border-radius:8px}
+@keyframes pop{from{transform:scale(.82);opacity:.35}to{transform:scale(1);opacity:1}}
+@keyframes rise{from{transform:translateY(18px);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+#app{position:fixed;inset:0;display:flex;flex-direction:column;background:#F1F4F8;overflow:hidden}
+.scroll{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+#ghost{position:fixed;left:0;top:0;z-index:60;pointer-events:none;background:#0F2440;color:#fff;border-radius:10px;padding:9px 12px;font-size:12px;font-weight:800;box-shadow:0 10px 24px rgba(15,36,64,.42);will-change:transform}
+#ghost[hidden]{display:none}
+#boot-error{display:none;margin:0;padding:24px;font:13px/1.6 ui-monospace,monospace;color:#991B1B;background:#FEF2F2;white-space:pre-wrap}
+@media print{
+  html,body{height:auto;background:#fff}
+  #app{position:static;height:auto;overflow:visible;display:block}
+  .scroll{overflow:visible;height:auto;padding-bottom:0!important}
+  .no-print{display:none!important}
+  *,*::before,*::after{-webkit-print-color-adjust:exact;print-color-adjust:exact;animation:none!important;backdrop-filter:none!important;box-shadow:none!important}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="ghost" hidden></div>
+<pre id="boot-error"></pre>
+<script>
+(function(){
+'use strict';
+
+/* ============================================================
+   Dugout Lineup - youth baseball roster, lineup and game-day tool.
+   Single file. No build step, no server, no network required.
+   State is saved to this browser's localStorage.
+   ============================================================ */
+
+var LS = 'dugout-lineup-v3';
+
+var POS  = ['P','C','1B','2B','3B','SS','LF','CF','RF'];
+var INFP = ['P','C','1B','2B','3B','SS'];
+var PCOL = {P:'#FECACA',C:'#FED7AA','1B':'#FEF3C7','2B':'#DCFCE7','3B':'#BFDBFE',SS:'#DDD6FE',LF:'#FBCFE8',CF:'#FBCFE8',RF:'#FBCFE8',REST:'#E2E8F0'};
+var PTXT = {P:'#7F1D1D',C:'#7C2D12','1B':'#78350F','2B':'#14532D','3B':'#1E3A8A',SS:'#4C1D95',LF:'#831843',CF:'#831843',RF:'#831843',REST:'#334155'};
+var SLOTX = {CF:50,LF:15,RF:85,SS:33,'2B':67,'3B':14,'1B':86,P:50,C:50};
+var SLOTY = {CF:0.02,LF:0.075,RF:0.075,SS:0.315,'2B':0.315,'3B':0.515,'1B':0.515,P:0.645,C:0.845};
+var AVAIL = ['Available','Absent','Arriving late','Leaving early','Injured','Batting only','Defense only','Selected innings'];
+var OUT_STATES = {Absent:1, Injured:1};
+
+/* Seed roster.
+   [id, jersey, first, last, batting, pitching, fielding, positionInnings, ratings, trend]
+   batting  [GP,PA,AB,H,2B,3B,HR,RBI,R,BB,SO,QAB,contactPct,hardHit,pitchesSeen]
+   pitching [IP,BF,pitches,ERA,WHIP,strikePct,fpsPct,SO,BB,H,ER,WP]
+   fielding [chances,A,PO,fpct,E]
+   ratings  [contact,power,speed,infield,outfield,pitching,catching,awareness,devPriority] */
+var SEED = [
+  ['ritz',7,'Ritz','Everhart',[12,24,18,8,2,1,0,7,11,5,3,15,83.3,5,92],['4.1',22,78,4.15,1.62,58,52,6,6,5,2,2],[24,6,16,0.917,2],{CF:'22.0','2B':'8.0',SS:'6.0',P:'4.1',LF:'3.0'},[4,3,5,4,5,3,2,4,2],'up'],
+  ['lucas',12,'Lucas','Fritzinger',[12,26,20,7,1,0,1,9,8,6,5,14,75.0,4,104],['6.0',30,112,3.00,1.33,61,55,9,5,7,2,1],[31,9,20,0.935,2],{C:'20.0','1B':'14.0',P:'6.0','3B':'2.0'},[4,4,3,4,3,4,5,4,2],'flat'],
+  ['eli',3,'Eli','Maslennikov',[11,23,17,6,2,0,0,5,7,5,6,12,70.6,3,99],['8.1',38,141,2.16,1.08,64,59,13,4,5,2,0],[27,11,14,0.926,2],{P:'8.1','3B':'16.0','2B':'10.0',SS:'4.0'},[3,3,4,4,3,5,2,4,2],'up'],
+  ['will',21,'Will','Kobetitsch',[12,42,33,12,3,1,1,14,13,7,7,24,78.8,9,168],null,[40,8,30,0.950,2],{'1B':'18.0',C:'16.0','3B':'6.0',LF:'2.0'},[4,5,3,4,3,2,4,4,2],'up'],
+  ['jj',9,'JJ','Tucker',[12,28,22,9,2,1,0,8,10,5,4,17,77.3,6,115],['3.2',19,71,5.40,1.80,55,48,4,5,4,3,3],[35,15,18,0.943,2],{SS:'30.0','2B':'6.0',P:'3.2'},[4,3,4,5,3,3,2,5,2],'flat'],
+  ['liam',5,'Liam','Daugila',[11,22,16,5,1,0,0,4,6,5,7,10,56.3,2,96],null,[18,6,9,0.833,3],{'2B':'20.0','1B':'8.0',RF:'4.0'},[2,2,3,3,3,2,2,3,4],'down'],
+  ['depew',14,'William','Depew',[12,25,19,7,1,0,0,6,7,5,5,13,73.7,4,101],['7.2',34,126,2.61,1.30,62,57,10,5,5,2,1],[26,10,14,0.923,2],{'3B':'22.0',P:'7.2','1B':'4.0',LF:'2.0'},[3,3,3,4,3,4,2,4,3],'flat'],
+  ['forrest',2,'Forrest','Tanner',[10,19,14,4,1,0,0,3,5,4,6,8,64.3,2,83],null,[12,2,8,0.833,2],{LF:'14.0',RF:'10.0',CF:'6.0'},[2,2,4,2,4,2,2,3,4],'up'],
+  ['jesse',18,'','Jesse',null,null,null,null,[3,3,3,3,3,3,3,3,5],null],
+  ['emory',24,'','Emory',null,null,null,null,[3,3,3,3,3,3,3,3,5],null],
+  ['vince',11,'Vincenzo','McDuff',[12,36,28,11,3,1,1,13,12,6,2,26,92.9,8,140],['5.0',24,88,3.60,1.40,60,54,7,4,3,2,1],[33,12,19,0.939,2],{CF:'18.0',SS:'12.0','2B':'8.0',P:'5.0'},[5,4,4,4,4,4,3,5,1],'up']
+];
+
+/* Last game's defensive plan, used by "Copy Last Game". */
+var DEMO = {
+  ritz:   ['CF','CF','CF','2B','REST','SS'],
+  lucas:  ['C','C','1B','1B','P','P'],
+  eli:    ['P','P','3B','3B','2B','2B'],
+  will:   ['1B','1B','C','C','C','C'],
+  jj:     ['SS','SS','SS','SS','SS','REST'],
+  liam:   ['2B','2B','2B','REST','1B','1B'],
+  depew:  ['3B','3B','P','P','3B','3B'],
+  forrest:['LF','RF','REST','CF','CF','CF'],
+  jesse:  ['RF','REST','LF','LF','LF','LF'],
+  emory:  ['REST','LF','RF','RF','RF','RF']
+};
+var ACTIVE = Object.keys(DEMO);
+
+var RECENT_SEED = [
+  {res:'W', rc:'#166534', score:'11-6', opp:'vs Nazareth Blue',  meta:'Aug 22 - 6 of 6 innings played',       actual:'Actual positions recorded',   ac:'#166534'},
+  {res:'L', rc:'#B91C1C', score:'4-9',  opp:'at Saucon Valley',  meta:'Aug 16 - 5 of 6 innings (time limit)', actual:'Actual positions recorded',   ac:'#166534'},
+  {res:'T', rc:'#B45309', score:'8-8',  opp:'vs Parkland Green', meta:'Aug 9 - 6 of 6 innings',               actual:'Planned only - not confirmed', ac:'#B45309'}
+];
+
+/* ---------- number formatting ---------- */
+function sd(a, b){ var v = a / b; return (b && isFinite(v)) ? v : null; }
+function ipOuts(s){
+  if(s === null || s === undefined || s === '') return null;
+  var n = parseFloat(s);
+  if(isNaN(n)) return null;
+  var w = Math.floor(n + 1e-9);
+  var f = Math.round((n - w) * 10);
+  return w * 3 + Math.min(f, 2);
+}
+function ipDisp(o){ if(o === null || o === undefined) return '—'; return Math.floor(o / 3) + '.' + (o % 3); }
+function f3(v){ if(v === null || v === undefined || isNaN(v)) return '—'; return (v < 1 && v >= 0) ? v.toFixed(3).slice(1) : v.toFixed(3); }
+function p1(v){ return (v === null || v === undefined || isNaN(v)) ? '—' : v.toFixed(1) + '%'; }
+function f2(v){ return (v === null || v === undefined || isNaN(v)) ? '—' : v.toFixed(2); }
+function i0(v){ return (v === null || v === undefined || isNaN(v)) ? '—' : String(Math.round(v)); }
+
+/* ---------- player model ---------- */
+function mkPlayer(r){
+  var id = r[0], jersey = r[1], first = r[2], last = r[3];
+  var B = r[4], P = r[5], F = r[6], PI = r[7], RT = r[8] || [3,3,3,3,3,3,3,3,3], trend = r[9];
+  var display = (first && String(first).trim()) ? first + ' ' + last : String(last);
+  var b = null;
+  if(B){
+    var GP = B[0], PA = B[1], AB = B[2], H = B[3], d2 = B[4], d3 = B[5], HR = B[6];
+    var tb = (H - d2 - d3 - HR) + 2 * d2 + 3 * d3 + 4 * HR;
+    var obp = sd(H + B[9], PA), slg = sd(tb, AB);
+    b = {GP:GP, PA:PA, AB:AB, H:H, doubles:d2, triples:d3, HR:HR, RBI:B[7], runs:B[8], walks:B[9],
+      strikeouts:B[10], QAB:B[11], AVG:sd(H, AB), OBP:obp, SLG:slg,
+      OPS:(obp === null || slg === null) ? null : obp + slg,
+      QABPercent:sd(100 * B[11], PA), contactPercent:B[12], hardHitBalls:B[13],
+      pitchesSeen:B[14], pitchesPerPA:sd(B[14], PA)};
+  }
+  var p = null;
+  if(P){
+    var outs = ipOuts(P[0]), inn = outs === null ? null : outs / 3;
+    p = {inningsPitchedDisplay:P[0], inningsPitchedOuts:outs, battersFaced:P[1], pitches:P[2],
+      ERA:P[3], WHIP:P[4], strikePercent:P[5], firstPitchStrikePercent:P[6], strikeouts:P[7],
+      walks:P[8], hitsAllowed:P[9], earnedRuns:P[10], wildPitches:P[11],
+      walksPerInning:sd(P[8], inn), pitchesPerInning:sd(P[2], inn), kPerBF:sd(100 * P[7], P[1])};
+  }
+  var f = null;
+  if(F){
+    var pi = {}, tot = 0;
+    Object.keys(PI || {}).forEach(function(k){ var o = ipOuts(PI[k]); pi[k] = o; tot += (o || 0); });
+    f = {totalChances:F[0], assists:F[1], putouts:F[2], fieldingPercent:F[3], errors:F[4],
+      positionInnings:pi, positionDisplay:PI || {}, totalDefensiveOuts:tot};
+  }
+  var rk = ['contact','power','speed','infield','outfield','pitching','catching','awareness','dev'];
+  var ratings = {};
+  rk.forEach(function(k, i){ ratings[k] = (RT[i] === undefined || RT[i] === null) ? 3 : RT[i]; });
+  return {id:id, jerseyNumber:jersey, firstName:first, lastName:last, displayName:display,
+    isNewPlayer:!B && !P && !F, b:b, p:p, f:f, ratings:ratings, trend:trend};
+}
+
+function buildPlan(n, ids){
+  var out = [];
+  for(var i = 0; i < n; i++){
+    var m = {};
+    ids.forEach(function(id){ if(DEMO[id]) m[id] = DEMO[id][i] || null; });
+    out.push(m);
+  }
+  return out;
+}
+function blankPlan(n){
+  var out = [];
+  for(var i = 0; i < n; i++) out.push({});
+  return out;
+}
+
+/* ---------- html escaping ---------- */
+var ESC = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
+function e(s){
+  return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function(c){ return ESC[c]; });
+}
+
+/* ============================================================
+   STORE
+   ============================================================ */
+
+var App = {
+  state:null,
+  roster:[],
+  byId:{},
+  rosterRows:null,   // non-null once a CSV has been imported
+  canStore:true,     // false in private windows / when site data is blocked
+  warnStorage:false, // only true once a real save has actually failed
+  toastTimer:null,
+  flashTimer:null
+};
+
+/* Private windows and blocked site data make localStorage throw. Find out up
+   front so the app can say so, rather than quietly losing a coach's lineup. */
+function storageWorks(){
+  try{
+    var k = LS + ':probe';
+    localStorage.setItem(k, '1');
+    localStorage.removeItem(k);
+    return true;
+  }catch(err){ return false; }
+}
+
+function setRoster(rows){
+  App.roster = rows.map(mkPlayer);
+  App.byId = {};
+  App.roster.forEach(function(p){ App.byId[p.id] = p; });
+}
+function isSeedRoster(){ return !App.rosterRows; }
+
+function boot(savedOverride){
+  var saved = null;
+  App.canStore = storageWorks();
+  if(savedOverride){
+    saved = savedOverride;
+  } else {
+    try{
+      var raw = localStorage.getItem(LS);
+      if(raw){
+        var s = JSON.parse(raw);
+        if(s && s.v === 3 && s.d) saved = s.d;
+      }
+    }catch(err){}
+  }
+
+  App.rosterRows = (saved && saved.rosterRows) ? saved.rosterRows : null;
+  setRoster(App.rosterRows || SEED);
+
+  var seedMode = isSeedRoster();
+  var ids = App.roster.map(function(p){ return p.id; });
+  var avail = {};
+  App.roster.forEach(function(p){
+    avail[p.id] = (seedMode && p.id === 'vince') ? 'Absent' : 'Available';
+  });
+
+  var base = {
+    screen:'games', tab:'defense', inning:1, view:'field', gridMode:'player',
+    plan: seedMode ? buildPlan(6, ids) : blankPlan(6),
+    locks:{}, order: seedMode ? ACTIVE.slice() : ids.slice(), bLocks:{},
+    avail:avail, innWindow:{}, restrict:{}, overrides:{}, notes:{},
+    settings:{opponent:'Lehigh Valley Storm', date:'2026-09-12', time:'10:00 AM',
+      field:'Memorial Park - Field 2', innings:6, fielders:9,
+      battingMode:'Whole roster', lineupMode:'Balanced'},
+    batMetrics:['AVG','OBP'], compare:false, versions:[],
+    rankGroup:'BATTING', rankMetric:'AVG', rankFilter:'Available today', minPA:0, rankPos:'SS',
+    gd:{inning:1, actual:{}, log:[]}, finalized:false,
+    hist:[], fut:[], sheet:null, sheetTab:'OVERVIEW', sheetMore:false,
+    modal:null, toast:'', sel:null, drag:null, over:null, lastMove:null,
+    csvNote:'', csvSource:'', recent:RECENT_SEED.slice(),
+    showPositionColors:true, showDevelopmentFlags:true,
+    rosterRows:null
+  };
+  if(saved) Object.assign(base, saved);
+  base.hist = []; base.fut = [];
+  base.sheet = null; base.modal = null; base.toast = '';
+  base.sel = null; base.drag = null; base.over = null; base.lastMove = null;
+  return base;
+}
+
+var PERSIST_KEYS = ['plan','locks','order','bLocks','avail','innWindow','restrict','overrides','notes',
+  'settings','batMetrics','versions','gd','finalized','rankGroup','rankMetric','rankFilter','minPA',
+  'rankPos','screen','tab','inning','view','gridMode','csvNote','csvSource','recent',
+  'showPositionColors','showDevelopmentFlags','rosterRows'];
+
+function persist(){
+  var S = App.state, d = {};
+  PERSIST_KEYS.forEach(function(k){ d[k] = S[k]; });
+  d.rosterRows = App.rosterRows;
+  try{
+    localStorage.setItem(LS, JSON.stringify({v:3, d:d}));
+    App.canStore = true;
+    App.warnStorage = false;
+  }catch(err){
+    /* Blocked, or out of quota. Only warn once a real save has failed - saying
+       so on a clean first load would be noise, and would show up in previews. */
+    App.canStore = false;
+    App.warnStorage = true;
+  }
+}
+
+function up(patch){
+  Object.assign(App.state, patch);
+  persist();
+  render();
+}
+
+function say(msg){
+  if(App.toastTimer) clearTimeout(App.toastTimer);
+  App.state.toast = msg;
+  App.toastTimer = setTimeout(function(){ App.state.toast = ''; render(); }, 2200);
+  render();
+}
+
+function snap(){
+  var S = App.state;
+  return JSON.stringify({plan:S.plan, locks:S.locks, order:S.order, bLocks:S.bLocks,
+    gd:S.gd, settings:S.settings, avail:S.avail});
+}
+
+/* Apply a change, recording it on the undo stack. */
+function mut(fn, msg){
+  var before = snap();
+  var n = fn(App.state) || {};
+  n.hist = App.state.hist.concat([before]).slice(-50);
+  n.fut = [];
+  Object.assign(App.state, n);
+  persist();
+  if(App.state.lastMove){
+    if(App.flashTimer) clearTimeout(App.flashTimer);
+    App.flashTimer = setTimeout(function(){ App.state.lastMove = null; render(); }, 400);
+  }
+  if(msg) say(msg); else render();
+}
+
+function undo(){
+  if(!App.state.hist.length){ say('Nothing to undo'); return; }
+  var before = snap();
+  var prev = JSON.parse(App.state.hist[App.state.hist.length - 1]);
+  var hist = App.state.hist.slice(0, -1);
+  var fut = App.state.fut.concat([before]);
+  Object.assign(App.state, prev, {hist:hist, fut:fut, sel:null, lastMove:null});
+  persist();
+  say('Undo');
+}
+function redo(){
+  if(!App.state.fut.length){ say('Nothing to redo'); return; }
+  var before = snap();
+  var nx = JSON.parse(App.state.fut[App.state.fut.length - 1]);
+  var fut = App.state.fut.slice(0, -1);
+  var hist = App.state.hist.concat([before]);
+  Object.assign(App.state, nx, {hist:hist, fut:fut, sel:null, lastMove:null});
+  persist();
+  say('Redo');
+}
+
+/* ============================================================
+   DERIVED STATE
+   ============================================================ */
+
+function wide(){ return window.innerWidth >= 768; }
+
+function inGame(id){ return !OUT_STATES[App.state.avail[id]]; }
+function bats(id){ return inGame(id) && App.state.avail[id] !== 'Defense only'; }
+function fields(id){ return inGame(id) && App.state.avail[id] !== 'Batting only'; }
+function innOk(id, inning){
+  var w = App.state.innWindow[id];
+  if(!w || !w.length) return true;
+  return w.indexOf(inning) >= 0;
+}
+function fieldersFor(inning){
+  return App.roster.filter(function(p){ return fields(p.id) && innOk(p.id, inning); })
+    .map(function(p){ return p.id; });
+}
+function gameIds(){ return App.state.order.filter(inGame); }
+function locked(inning, id){ return !!App.state.locks[inning + ':' + id]; }
+function posOf(inning, id){ var m = App.state.plan[inning - 1]; return m ? m[id] : null; }
+function playerAt(inning, pos){
+  var m = App.state.plan[inning - 1] || {};
+  var k = Object.keys(m).find(function(id){ return m[id] === pos && inGame(id); });
+  return k || null;
+}
+function short(id){
+  var p = App.byId[id];
+  if(!p) return '';
+  if(!p.firstName) return p.displayName;
+  return p.firstName + ' ' + String(p.lastName).charAt(0) + '.';
+}
+function chipName(id){
+  var p = App.byId[id];
+  if(!p) return '';
+  return p.firstName ? p.firstName : p.displayName;
+}
+function expOuts(id, pos){
+  var p = App.byId[id];
+  if(!p || !p.f) return null;
+  var v = p.f.positionInnings[pos];
+  return v === undefined ? 0 : v;
+}
+function expStatus(id, pos){
+  var p = App.byId[id];
+  if(!p) return 'Unknown';
+  var ov = (App.state.overrides[id] || {})[pos];
+  if(ov === 'no') return 'Not eligible';
+  if(ov === 'yes') return 'Coach approved';
+  if(p.isNewPlayer) return 'Unknown';
+  var o = expOuts(id, pos) || 0;
+  if(o >= 30) return 'Experienced';
+  if(o >= 9) return 'Some experience';
+  return 'New position';
+}
+function eligible(id, pos){
+  var ov = (App.state.overrides[id] || {})[pos];
+  if(ov === 'no') return false;
+  var r = App.state.restrict[id] || {};
+  if(pos === 'P' && r.noPitch) return false;
+  if(pos === 'C' && r.noCatch) return false;
+  return true;
+}
+function expScore(id, pos){
+  var p = App.byId[id];
+  if(!p) return -99;
+  if(!eligible(id, pos)) return -999;
+  var r = p.ratings, base;
+  if(pos === 'P') base = r.pitching * 4;
+  else if(pos === 'C') base = r.catching * 4;
+  else if(INFP.indexOf(pos) >= 0) base = r.infield * 3;
+  else base = r.outfield * 3;
+  var o = expOuts(id, pos);
+  return base + (o === null ? 4 : Math.min(o / 3, 14));
+}
+function countInPlan(plan, id, pos, n){
+  var c = 0;
+  for(var i = 0; i < n; i++){ var m = plan[i] || {}; if(m[id] === pos) c++; }
+  return c;
+}
+function col(p){ return App.state.showPositionColors === false ? '#E8ECF2' : (PCOL[p] || '#E2E8F0'); }
+function colT(p){ return App.state.showPositionColors === false ? '#1F3352' : (PTXT[p] || '#334155'); }
+
+/* The batting order, restricted to players who actually bat.
+   Each entry keeps its index in state.order so locks and moves stay consistent. */
+function battingSlots(){
+  var out = [];
+  App.state.order.forEach(function(id, oi){ if(bats(id)) out.push({id:id, oi:oi}); });
+  return out;
+}
+
+/* ---------- validation ---------- */
+function audit(){
+  var S = App.state, N = S.settings.innings;
+  var ids = gameIds().filter(fields);
+  var red = [], amber = [], blue = [], gray = [];
+  var rest = {}, def = {}, inf = {}, of = {}, pit = {}, cat = {}, variety = {};
+  var filled = 0;
+  ids.forEach(function(id){
+    rest[id] = 0; def[id] = 0; inf[id] = 0; of[id] = 0; pit[id] = 0; cat[id] = 0; variety[id] = {};
+  });
+  for(var i = 1; i <= N; i++){
+    (function(i){
+      var m = S.plan[i - 1] || {};
+      var seen = {};
+      var elig = fieldersFor(i);
+      elig.forEach(function(id){
+        var p = m[id];
+        if(!p){
+          red.push({t:'Inning ' + i + ': ' + short(id) + ' has no assignment',
+            d:'Every active player needs a position or a rest each inning.'});
+          return;
+        }
+        if(p === 'REST'){
+          rest[id] = (rest[id] || 0) + 1;
+          var prev = (S.plan[i - 2] || {})[id];
+          if(prev === 'REST') amber.push({t:'Inning ' + i + ': ' + short(id) + ' rests back-to-back',
+            d:'Consecutive rest innings - spread rests apart when you can.'});
+          return;
+        }
+        if(seen[p]){
+          red.push({t:'Inning ' + i + ': two players at ' + p,
+            d:short(seen[p]) + ' and ' + short(id) + ' are both assigned ' + p + '.'});
+        } else { seen[p] = id; filled++; }
+        def[id] = (def[id] || 0) + 1;
+        if(INFP.indexOf(p) >= 0) inf[id] = (inf[id] || 0) + 1; else of[id] = (of[id] || 0) + 1;
+        if(p === 'P') pit[id] = (pit[id] || 0) + 1;
+        if(p === 'C') cat[id] = (cat[id] || 0) + 1;
+        variety[id][p] = 1;
+        var r = S.restrict[id] || {};
+        if(p === 'P' && r.noPitch) red.push({t:'Inning ' + i + ': ' + short(id) + ' cannot pitch today',
+          d:'Throwing restriction is set on this player.'});
+        if(p === 'C' && r.noCatch) red.push({t:'Inning ' + i + ': ' + short(id) + ' cannot catch today',
+          d:'Catching restriction is set on this player.'});
+        if((S.overrides[id] || {})[p] === 'no'){
+          red.push({t:'Inning ' + i + ': ' + short(id) + ' marked not eligible at ' + p,
+            d:'Coach override blocks this position.'});
+        } else if(expStatus(id, p) === 'New position'){
+          blue.push({t:'Inning ' + i + ': ' + short(id) + ' is new to ' + p,
+            d:'No recorded innings at ' + p + '. Good development rep - worth a heads-up before the pitch.'});
+        } else if(expStatus(id, p) === 'Unknown'){
+          blue.push({t:'Inning ' + i + ': ' + short(id) + ' has no history at ' + p,
+            d:'New player - add a coach rating or eligibility so future plans are smarter.'});
+        }
+      });
+      Object.keys(m).forEach(function(id){
+        if(m[id] && m[id] !== 'REST' && !inGame(id)){
+          red.push({t:'Inning ' + i + ': ' + short(id) + ' is ' + (S.avail[id] || 'unavailable').toLowerCase(),
+            d:'Unavailable players cannot hold a position.'});
+        }
+        if(m[id] && m[id] !== 'REST' && !innOk(id, i)){
+          red.push({t:'Inning ' + i + ': ' + short(id) + ' is not on the field that inning',
+            d:'Arriving-late / leaving-early window excludes inning ' + i + '.'});
+        }
+      });
+      POS.forEach(function(p){
+        if(!seen[p] && elig.length >= 9){
+          red.push({t:'Inning ' + i + ': ' + p + ' is empty', d:'No player is assigned to ' + p + '.'});
+        }
+      });
+    })(i);
+  }
+  var totalRest = Object.keys(rest).reduce(function(a, k){ return a + rest[k]; }, 0);
+  var noRest = ids.filter(function(id){ return !rest[id]; });
+  var consec = 0;
+  ids.forEach(function(id){
+    for(var i = 2; i <= N; i++){
+      if((S.plan[i - 1] || {})[id] === 'REST' && (S.plan[i - 2] || {})[id] === 'REST') consec++;
+    }
+  });
+  ids.forEach(function(id){
+    var vs = Object.keys(variety[id]).length;
+    if(def[id] > 0 && vs === 1 && def[id] >= 4) amber.push({t:short(id) + ' plays ' + Object.keys(variety[id])[0] + ' all ' + def[id] + ' innings', d:'Single-position game. Consider one inning somewhere new.'});
+    if(def[id] > 0 && !inf[id]) amber.push({t:short(id) + ' has no infield inning', d:'All ' + def[id] + ' defensive innings are in the outfield.'});
+    if(def[id] > 0 && !of[id] && vs <= 2) blue.push({t:short(id) + ' never leaves the infield', d:'Fine for a competitive plan - flag it if you are developing outfield reads.'});
+    if(cat[id] >= 4) amber.push({t:short(id) + ' catches ' + cat[id] + ' innings', d:'Heavy catching load in one game. Watch legs and heat.'});
+    if(pit[id] >= 3) amber.push({t:short(id) + ' pitches ' + pit[id] + ' innings', d:'Arm workload - check your league rest rules before finalizing.'});
+    if(def[id] <= N - 3) amber.push({t:short(id) + ' gets only ' + def[id] + ' defensive innings', d:'Below the rest of the group. Balance across the next game if this is intentional.'});
+    if(App.byId[id] && App.byId[id].ratings.dev >= 5 && vs < 2) blue.push({t:short(id) + ' is a development priority', d:'Only ' + vs + ' position this game. Try one new spot in a low-pressure inning.'});
+  });
+  gray.push({t:totalRest + ' total rest assignments across ' + N + ' innings',
+    d:ids.length + ' available fielders and ' + N + ' innings gives ' + (ids.length * N - N * 9) + ' rest slots. With ' + ids.length + ' players it is not possible for everyone to sit exactly once.'});
+  if(noRest.length) gray.push({t:noRest.length + ' players do not rest',
+    d:noRest.map(short).join(', ') + '. They play every inning of the plan.'});
+  var pitchers = ids.filter(function(id){ return pit[id] > 0; }).map(short);
+  if(pitchers.length) gray.push({t:'Pitchers used: ' + pitchers.join(', '),
+    d:'All are eligible under the restrictions set on the availability screen.'});
+  var restVals = ids.map(function(id){ return rest[id] || 0; });
+  var spread = Math.max.apply(null, restVals.concat([0])) - Math.min.apply(null, restVals.concat([0]));
+  return {red:red, amber:amber, blue:blue, gray:gray, rest:rest, def:def, inf:inf, of:of, pit:pit,
+    cat:cat, variety:variety, ids:ids, filled:filled, need:N * 9, totalRest:totalRest,
+    noRest:noRest, consec:consec, spread:spread};
+}
+
+function health(a){
+  var N = App.state.settings.innings;
+  var pct = a.need ? Math.round(100 * a.filled / a.need) : 0;
+  var maxPit = Math.max.apply(null, a.ids.map(function(id){ return a.pit[id] || 0; }).concat([0]));
+  var maxCat = Math.max.apply(null, a.ids.map(function(id){ return a.cat[id] || 0; }).concat([0]));
+  var noInf = a.ids.filter(function(id){ return a.def[id] > 0 && !a.inf[id]; }).length;
+  var single = a.ids.filter(function(id){ return Object.keys(a.variety[id]).length === 1 && a.def[id] >= 4; }).length;
+  var rows = [
+    {k:'Assignments', v:pct + '%', ok:pct === 100 ? 2 : (pct >= 90 ? 1 : 0),
+      why:a.filled + ' of ' + a.need + ' defensive slots filled across ' + N + ' innings.'},
+    {k:'Rules', v:a.red.length ? a.red.length + ' conflict' + (a.red.length > 1 ? 's' : '') : 'Complete', ok:a.red.length ? 0 : 2,
+      why:a.red.length ? 'Fix red items on this screen before you finalize.' : 'No duplicate players, no duplicate positions, no unavailable players assigned, restrictions respected.'},
+    {k:'Rest distribution', v:a.consec ? 'Review' : (a.spread <= 1 ? 'Good' : 'Uneven'), ok:a.consec ? 1 : (a.spread <= 1 ? 2 : 1),
+      why:a.totalRest + ' rest assignments, ' + a.noRest.length + ' players never sit, ' + a.consec + ' back-to-back rests. Spread between most and fewest rests is ' + a.spread + '.'},
+    {k:'Position variety', v:single ? 'Needs review' : 'Good', ok:single ? 1 : 2,
+      why:single ? single + ' player(s) stay at one position for 4+ innings.' : 'Every player who plays 4+ innings sees more than one position.'},
+    {k:'Arm workload', v:maxPit >= 3 ? 'Watch' : 'Good', ok:maxPit >= 3 ? 1 : 2,
+      why:'Most innings by one pitcher: ' + maxPit + '. Most innings by one catcher: ' + maxCat + '.'},
+    {k:'Defensive balance', v:noInf ? noInf + ' outfield-only' : 'Good', ok:noInf ? 1 : 2,
+      why:noInf ? noInf + ' player(s) get no infield inning in this plan.' : 'Every fielder gets at least one infield and the outfield is covered.'}
+  ];
+  return {rows:rows, pct:pct};
+}
+
+function playTime(a){
+  var out = {};
+  a.ids.forEach(function(id){
+    out[id] = {def:a.def[id] || 0, rest:a.rest[id] || 0, inf:a.inf[id] || 0, of:a.of[id] || 0,
+      cat:a.cat[id] || 0, pit:a.pit[id] || 0, variety:Object.keys(a.variety[id]).length};
+  });
+  return out;
+}
+
+/* ---------- rankings ---------- */
+function metrics(group, a){
+  var pt = playTime(a), pos = App.state.rankPos;
+  function B(k, dir, get, fmt, s){ return {k:k, dir:dir, get:get, fmt:fmt, s:s}; }
+  if(group === 'BATTING') return [
+    B('AVG','desc',function(p){ return p.b ? p.b.AVG : null; }, f3, function(p){ return p.b ? p.b.AB + ' AB' : null; }),
+    B('OBP','desc',function(p){ return p.b ? p.b.OBP : null; }, f3, function(p){ return p.b ? p.b.PA + ' PA' : null; }),
+    B('OPS','desc',function(p){ return p.b ? p.b.OPS : null; }, f3, function(p){ return p.b ? p.b.PA + ' PA' : null; }),
+    B('SLG','desc',function(p){ return p.b ? p.b.SLG : null; }, f3, function(p){ return p.b ? p.b.AB + ' AB' : null; }),
+    B('Contact %','desc',function(p){ return p.b ? p.b.contactPercent : null; }, p1, function(p){ return p.b ? p.b.AB + ' AB' : null; }),
+    B('QAB %','desc',function(p){ return p.b ? p.b.QABPercent : null; }, p1, function(p){ return p.b ? p.b.PA + ' PA' : null; }),
+    B('RBI','desc',function(p){ return p.b ? p.b.RBI : null; }, i0, function(p){ return p.b ? p.b.GP + ' GP' : null; }),
+    B('Runs','desc',function(p){ return p.b ? p.b.runs : null; }, i0, function(p){ return p.b ? p.b.GP + ' GP' : null; }),
+    B('Walks','desc',function(p){ return p.b ? p.b.walks : null; }, i0, function(p){ return p.b ? p.b.PA + ' PA' : null; }),
+    B('Strikeouts','asc',function(p){ return p.b ? p.b.strikeouts : null; }, i0, function(p){ return p.b ? p.b.PA + ' PA' : null; })
+  ];
+  if(group === 'PITCHING') return [
+    B('Strike %','desc',function(p){ return p.p ? p.p.strikePercent : null; }, p1, function(p){ return p.p ? p.p.pitches + ' pitches' : null; }),
+    B('1st-pitch strike %','desc',function(p){ return p.p ? p.p.firstPitchStrikePercent : null; }, p1, function(p){ return p.p ? p.p.battersFaced + ' BF' : null; }),
+    B('WHIP','asc',function(p){ return p.p ? p.p.WHIP : null; }, f2, function(p){ return p.p ? p.p.inningsPitchedDisplay + ' IP' : null; }),
+    B('ERA','asc',function(p){ return p.p ? p.p.ERA : null; }, f2, function(p){ return p.p ? p.p.inningsPitchedDisplay + ' IP' : null; }),
+    B('BB per inning','asc',function(p){ return p.p ? p.p.walksPerInning : null; }, f2, function(p){ return p.p ? p.p.inningsPitchedDisplay + ' IP' : null; }),
+    B('SO per batter faced','desc',function(p){ return p.p ? p.p.kPerBF : null; }, p1, function(p){ return p.p ? p.p.battersFaced + ' BF' : null; }),
+    B('Pitches per inning','asc',function(p){ return p.p ? p.p.pitchesPerInning : null; }, f2, function(p){ return p.p ? p.p.inningsPitchedDisplay + ' IP' : null; })
+  ];
+  if(group === 'FIELDING') return [
+    B('Fielding %','desc',function(p){ return p.f ? p.f.fieldingPercent : null; }, f3, function(p){ return p.f ? p.f.totalChances + ' chances' : null; }),
+    B('Total chances','desc',function(p){ return p.f ? p.f.totalChances : null; }, i0, function(p){ return p.f ? ipDisp(p.f.totalDefensiveOuts) + ' inn' : null; }),
+    B('Errors','asc',function(p){ return p.f ? p.f.errors : null; }, i0, function(p){ return p.f ? p.f.totalChances + ' chances' : null; }),
+    B('Defensive innings','desc',function(p){ return p.f ? p.f.totalDefensiveOuts : null; }, ipDisp, function(p){ return p.b ? p.b.GP + ' GP' : null; }),
+    B('Innings at ' + pos,'desc',function(p){ return p.f ? (p.f.positionInnings[pos] === undefined ? 0 : p.f.positionInnings[pos]) : null; }, ipDisp, function(p){ return p.f ? 'career' : null; })
+  ];
+  if(group === 'PLAYING TIME') return [
+    B('Fielding innings','desc',function(p){ return pt[p.id] ? pt[p.id].def : null; }, i0, function(){ return 'this game'; }),
+    B('Rest innings','desc',function(p){ return pt[p.id] ? pt[p.id].rest : null; }, i0, function(){ return 'this game'; }),
+    B('Infield innings','desc',function(p){ return pt[p.id] ? pt[p.id].inf : null; }, i0, function(){ return 'this game'; }),
+    B('Outfield innings','desc',function(p){ return pt[p.id] ? pt[p.id].of : null; }, i0, function(){ return 'this game'; }),
+    B('Catching innings','desc',function(p){ return pt[p.id] ? pt[p.id].cat : null; }, i0, function(){ return 'this game'; }),
+    B('Pitching innings','desc',function(p){ return pt[p.id] ? pt[p.id].pit : null; }, i0, function(){ return 'this game'; }),
+    B('Different positions','desc',function(p){ return pt[p.id] ? pt[p.id].variety : null; }, i0, function(){ return 'this game'; })
+  ];
+  return [
+    B('Contact','desc',function(p){ return p.ratings.contact; }, i0, function(){ return 'coach 1-5'; }),
+    B('Power','desc',function(p){ return p.ratings.power; }, i0, function(){ return 'coach 1-5'; }),
+    B('Speed','desc',function(p){ return p.ratings.speed; }, i0, function(){ return 'coach 1-5'; }),
+    B('Infield','desc',function(p){ return p.ratings.infield; }, i0, function(){ return 'coach 1-5'; }),
+    B('Outfield','desc',function(p){ return p.ratings.outfield; }, i0, function(){ return 'coach 1-5'; }),
+    B('Pitching','desc',function(p){ return p.ratings.pitching; }, i0, function(){ return 'coach 1-5'; }),
+    B('Catching','desc',function(p){ return p.ratings.catching; }, i0, function(){ return 'coach 1-5'; }),
+    B('Baseball awareness','desc',function(p){ return p.ratings.awareness; }, i0, function(){ return 'coach 1-5'; }),
+    B('Development priority','desc',function(p){ return p.ratings.dev; }, i0, function(){ return 'coach 1-5'; })
+  ];
+}
+
+function rankData(a){
+  var S = App.state;
+  var list = metrics(S.rankGroup, a);
+  var m = list.find(function(x){ return x.k === S.rankMetric; }) || list[0];
+  var pool = App.roster.slice();
+  var fl = S.rankFilter;
+  if(fl === 'Available today') pool = pool.filter(function(p){ return inGame(p.id); });
+  else if(fl === 'Eligible pitchers') pool = pool.filter(function(p){ return eligible(p.id, 'P') && (p.isNewPlayer || p.ratings.pitching >= 3); });
+  else if(fl === 'Eligible catchers') pool = pool.filter(function(p){ return eligible(p.id, 'C') && (p.isNewPlayer || p.ratings.catching >= 3); });
+  else if(fl === 'Eligible at ' + S.rankPos) pool = pool.filter(function(p){ return eligible(p.id, S.rankPos); });
+  else if(fl === 'Returning players') pool = pool.filter(function(p){ return !p.isNewPlayer; });
+  else if(fl === 'New players') pool = pool.filter(function(p){ return p.isNewPlayer; });
+  if(S.minPA > 0) pool = pool.filter(function(p){ return p.isNewPlayer || (p.b && p.b.PA >= S.minPA); });
+  var scored = pool.map(function(p){ return {p:p, v:m.get(p)}; });
+  var ok = function(x){ return x.v !== null && x.v !== undefined && !isNaN(x.v); };
+  var ranked = scored.filter(ok);
+  var unranked = scored.filter(function(x){ return !ok(x); });
+  ranked.sort(function(x, y){ return m.dir === 'asc' ? x.v - y.v : y.v - x.v; });
+  return {metric:m, list:list, ranked:ranked, unranked:unranked};
+}
+
+/* ============================================================
+   ACTIONS
+   ============================================================ */
+
+function assign(inning, id, pos){
+  if(locked(inning, id)){ say('Locked - unlock to move ' + short(id)); return; }
+  var other = pos === 'REST' ? null : playerAt(inning, pos);
+  if(other && locked(inning, other)){ say(short(other) + ' is locked at ' + pos); return; }
+  var msg = other ? (short(id) + ' <-> ' + short(other)) : (short(id) + ' -> ' + (pos === 'REST' ? 'Rest' : pos));
+  mut(function(s){
+    var plan = s.plan.map(function(o){ return Object.assign({}, o); });
+    var m = plan[inning - 1];
+    var cur = m[id] || 'REST';
+    if(other) m[other] = cur;
+    m[id] = pos;
+    return {plan:plan, sel:null, lastMove:{inning:inning, ids:other ? [id, other] : [id]}};
+  }, msg);
+}
+
+function swapOrderIdx(a, b){
+  if(a < 0 || b < 0 || a === b) return;
+  mut(function(s){
+    var order = s.order.slice();
+    var t = order[a]; order[a] = order[b]; order[b] = t;
+    return {order:order, sel:null};
+  }, 'Swapped batting spots');
+}
+
+function moveOrder(from, to){
+  if(from === to || from < 0 || to < 0) return;
+  mut(function(s){
+    var order = s.order.slice();
+    var it = order.splice(from, 1)[0];
+    order.splice(to, 0, it);
+    return {order:order, sel:null};
+  }, 'Moved in the batting order');
+}
+
+function toggleLock(inning, id){
+  var k = inning + ':' + id;
+  var was = !!App.state.locks[k];
+  mut(function(s){
+    var locks = Object.assign({}, s.locks);
+    if(locks[k]) delete locks[k]; else locks[k] = true;
+    return {locks:locks};
+  }, was ? 'Unlocked' : 'Locked ' + short(id) + ' - inning ' + inning);
+}
+
+function lockAllInnings(id){
+  var pos = posOf(App.state.inning, id);
+  if(!pos){ say('Assign ' + short(id) + ' a position first'); return; }
+  var n = App.state.settings.innings;
+  mut(function(s){
+    var plan = s.plan.map(function(o){ return Object.assign({}, o); });
+    var locks = Object.assign({}, s.locks);
+    for(var i = 1; i <= n; i++){
+      var mm = plan[i - 1];
+      var taken = Object.keys(mm).find(function(k){ return k !== id && mm[k] === pos; });
+      if(pos !== 'REST' && taken && !locks[i + ':' + taken]) mm[taken] = mm[id] || 'REST';
+      mm[id] = pos;
+      locks[i + ':' + id] = true;
+    }
+    return {plan:plan, locks:locks};
+  }, short(id) + ' locked at ' + pos + ' for all innings');
+}
+
+function copyInning(from, to){
+  if(from < 1 || from > App.state.settings.innings){ say('No inning ' + from + ' to copy'); return; }
+  mut(function(s){
+    var plan = s.plan.map(function(o){ return Object.assign({}, o); });
+    var src = plan[from - 1];
+    Object.keys(src).forEach(function(id){
+      if(s.locks[to + ':' + id]) return;
+      plan[to - 1][id] = src[id];
+    });
+    return {plan:plan, lastMove:{inning:to, ids:Object.keys(src)}};
+  }, 'Copied inning ' + from + ' -> inning ' + to);
+}
+
+function clearInning(inning){
+  mut(function(s){
+    var plan = s.plan.map(function(o){ return Object.assign({}, o); });
+    Object.keys(plan[inning - 1]).forEach(function(id){
+      if(!s.locks[inning + ':' + id]) plan[inning - 1][id] = null;
+    });
+    return {plan:plan};
+  }, 'Cleared inning ' + inning);
+}
+
+/* Greedy assignment: fill each open position with the best available player,
+   penalising repeats at that position and favouring anyone who has rested a lot. */
+function fill(inning, onlyEmpty, quiet){
+  var ids = fieldersFor(inning);
+  var apply = function(s){
+    var plan = s.plan.map(function(o){ return Object.assign({}, o); });
+    var m = plan[inning - 1];
+    var keep = {};
+    ids.forEach(function(id){
+      if(s.locks[inning + ':' + id] || (onlyEmpty && m[id])) keep[id] = m[id];
+    });
+    var taken = {};
+    Object.keys(keep).forEach(function(id){ if(keep[id] && keep[id] !== 'REST') taken[keep[id]] = 1; });
+    var restSoFar = {};
+    ids.forEach(function(id){ restSoFar[id] = countInPlan(s.plan, id, 'REST', s.settings.innings); });
+    var free = POS.filter(function(p){ return !taken[p]; });
+    free.forEach(function(pos){
+      var best = null, bs = -1e9;
+      ids.forEach(function(id){
+        if(keep[id] !== undefined && keep[id] !== null) return;
+        var sc = expScore(id, pos) - 2.5 * countInPlan(s.plan, id, pos, s.settings.innings) + 4 * restSoFar[id];
+        if(sc > bs){ bs = sc; best = id; }
+      });
+      if(best && bs > -500) keep[best] = pos;
+    });
+    ids.forEach(function(id){ m[id] = keep[id] || 'REST'; });
+    App.roster.forEach(function(p){ if(ids.indexOf(p.id) < 0) delete m[p.id]; });
+    return {plan:plan, lastMove:{inning:inning, ids:ids}};
+  };
+  if(quiet){
+    var n = apply(App.state);
+    Object.assign(App.state, n);
+    return;
+  }
+  mut(apply, onlyEmpty ? 'Auto-filled empty positions' : 'Regenerated unlocked assignments');
+}
+
+function fillAll(){
+  var n = App.state.settings.innings;
+  var before = snap();
+  for(var i = 1; i <= n; i++) fill(i, false, true);
+  App.state.hist = App.state.hist.concat([before]).slice(-50);
+  App.state.fut = [];
+  persist();
+  say('Generated all ' + n + ' innings');
+}
+
+function setInnings(n){
+  var v = Math.max(1, Math.min(9, n));
+  mut(function(s){
+    var plan = s.plan.slice();
+    while(plan.length < v) plan.push(Object.assign({}, plan[plan.length - 1] || {}));
+    var st = Object.assign({}, s.settings, {innings:v});
+    return {plan:plan, settings:st, inning:Math.min(s.inning, v),
+      gd:Object.assign({}, s.gd, {inning:Math.min(s.gd.inning, v)})};
+  }, v + ' innings');
+}
+
+/* ---------- batting order ---------- */
+function genOrder(mode){
+  var ids = gameIds().filter(bats);
+  function score(id){
+    var p = App.byId[id], r = p.ratings;
+    if(!p.b){
+      if(mode === 'Development') return 1.05;
+      if(mode === 'Competitive') return 0.35;
+      return 0.72;
+    }
+    var base = p.b.OPS === null ? 0.5 : p.b.OPS;
+    if(mode === 'Development') return base * 0.4 + (r.dev / 5) * 0.7 + (p.b.PA < 22 ? 0.25 : 0);
+    if(mode === 'Competitive') return base + (r.awareness / 25);
+    return base * 0.75 + (r.contact / 20) + (r.speed / 40);
+  }
+  return ids.slice().sort(function(a, b){ return score(b) - score(a); });
+}
+
+/* Regenerate the order, holding locked spots and any non-batting player in place. */
+function applyOrder(mode){
+  var gen = genOrder(mode);
+  mut(function(s){
+    var fixed = {}, fixedIds = {};
+    s.order.forEach(function(id, i){
+      if(s.bLocks[i] || !bats(id)){ fixed[i] = id; fixedIds[id] = 1; }
+    });
+    var pool = gen.filter(function(id){ return !fixedIds[id]; });
+    var out = [], pi = 0;
+    for(var i = 0; i < s.order.length; i++){
+      if(fixed[i] !== undefined) out.push(fixed[i]);
+      else if(pi < pool.length) out.push(pool[pi++]);
+    }
+    while(pi < pool.length) out.push(pool[pi++]);
+    return {order:out.filter(Boolean), compare:false};
+  }, mode + ' order applied (locks kept)');
+}
+
+function rotateOrder(){
+  mut(function(s){
+    var o = s.order.slice();
+    o.push(o.shift());
+    return {order:o};
+  }, 'Rotated - leadoff moves to the bottom');
+}
+
+function toggleBLock(i){
+  var was = !!App.state.bLocks[i];
+  mut(function(s){
+    var b = Object.assign({}, s.bLocks);
+    if(b[i]) delete b[i]; else b[i] = true;
+    return {bLocks:b};
+  }, was ? 'Spot unlocked' : 'Spot locked');
+}
+
+function saveVersion(){
+  mut(function(s){
+    var v = s.versions.concat([{name:s.settings.lineupMode + ' v' + (s.versions.length + 1),
+      order:s.order.slice(), at:Date.now()}]);
+    return {versions:v.slice(-6)};
+  }, 'Version saved');
+}
+function loadVersion(i){
+  var v = App.state.versions[i];
+  if(!v) return;
+  mut(function(){ return {order:v.order.slice()}; }, 'Loaded ' + v.name);
+}
+
+/* ---------- availability ---------- */
+function setAvail(id, v){
+  mut(function(s){
+    var a = Object.assign({}, s.avail); a[id] = v;
+    var plan = s.plan.map(function(o){ return Object.assign({}, o); });
+    var order = s.order.slice();
+    if(OUT_STATES[v]){
+      plan.forEach(function(m){ delete m[id]; });
+      order = order.filter(function(x){ return x !== id; });
+    } else if(order.indexOf(id) < 0){
+      order = order.concat([id]);
+    }
+    return {avail:a, plan:plan, order:order};
+  }, short(id) + ': ' + v);
+}
+
+function toggleWindow(id, inning){
+  mut(function(s){
+    var w = Object.assign({}, s.innWindow);
+    var cur = (w[id] || []).slice();
+    var at = cur.indexOf(inning);
+    if(at >= 0) cur.splice(at, 1); else cur.push(inning);
+    cur.sort(function(x, y){ return x - y; });
+    w[id] = cur;
+    return {innWindow:w};
+  });
+}
+
+function toggleRestrict(id, key){
+  mut(function(s){
+    var r = Object.assign({}, s.restrict);
+    var o = Object.assign({}, r[id] || {});
+    o[key] = !o[key];
+    r[id] = o;
+    return {restrict:r};
+  });
+}
+
+function setOverride(id, pos, v){
+  var o = Object.assign({}, App.state.overrides);
+  var po = Object.assign({}, o[id] || {});
+  if(po[pos] === v) delete po[pos]; else po[pos] = v;
+  o[id] = po;
+  up({overrides:o});
+}
+
+function resetAll(){
+  try{ localStorage.removeItem(LS); }catch(err){}
+  App.rosterRows = null;
+  var keep = {screen:App.state.screen, tab:App.state.tab};
+  App.state = boot();
+  App.state.screen = keep.screen; App.state.tab = keep.tab;
+  persist();
+  say('Reset to the seed roster and the default 6-inning plan');
+}
+
+/* ---------- game day ---------- */
+function actualOf(inning, id){
+  var a = App.state.gd.actual[inning];
+  if(a && a[id] !== undefined) return a[id];
+  return posOf(inning, id);
+}
+function actualPlayerAt(inning, pos){
+  var m = App.state.gd.actual[inning] || App.state.plan[inning - 1] || {};
+  var k = Object.keys(m).find(function(id){ return m[id] === pos && inGame(id); });
+  return k || null;
+}
+function confirmActual(inning){
+  mut(function(s){
+    var gd = {inning:s.gd.inning, actual:Object.assign({}, s.gd.actual), log:s.gd.log.slice()};
+    gd.actual[inning] = Object.assign({}, s.plan[inning - 1]);
+    gd.log = gd.log.concat(['Inning ' + inning + ' actual positions confirmed']);
+    return {gd:gd};
+  }, 'Inning ' + inning + ' recorded as played');
+}
+function advanceInning(){
+  var S = App.state;
+  if(S.gd.inning >= S.settings.innings){ say('Last inning - use End game'); return; }
+  mut(function(s){
+    var gd = {inning:s.gd.inning + 1, actual:Object.assign({}, s.gd.actual), log:s.gd.log.slice()};
+    if(!gd.actual[s.gd.inning]) gd.actual[s.gd.inning] = Object.assign({}, s.plan[s.gd.inning - 1]);
+    gd.log = gd.log.concat(['Advanced to inning ' + gd.inning]);
+    return {gd:gd, inning:gd.inning};
+  }, 'Now in inning ' + (S.gd.inning + 1));
+}
+function gdSwap(a, b, futureToo){
+  var inn = App.state.gd.inning;
+  mut(function(s){
+    var gd = {inning:s.gd.inning, actual:Object.assign({}, s.gd.actual), log:s.gd.log.slice()};
+    var cur = Object.assign({}, gd.actual[inn] || s.plan[inn - 1]);
+    var t = cur[a]; cur[a] = cur[b]; cur[b] = t;
+    gd.actual[inn] = cur;
+    var plan = s.plan;
+    if(futureToo){
+      plan = s.plan.map(function(o, i){
+        if(i + 1 <= inn) return Object.assign({}, o);
+        var m = Object.assign({}, o);
+        if(s.locks[(i + 1) + ':' + a] || s.locks[(i + 1) + ':' + b]) return m;
+        var x = m[a]; m[a] = m[b]; m[b] = x;
+        return m;
+      });
+      gd.log = gd.log.concat(['Inning ' + inn + ': ' + short(a) + ' <-> ' + short(b) + ' (repaired innings ' + (inn + 1) + '-' + s.settings.innings + ')']);
+    } else {
+      gd.log = gd.log.concat(['Inning ' + inn + ': ' + short(a) + ' <-> ' + short(b) + ' (this inning only)']);
+    }
+    return {gd:gd, plan:plan, modal:null, sel:null};
+  }, futureToo ? 'Swapped and repaired future innings' : 'Swapped for inning ' + inn + ' only');
+}
+function pullPlayer(id, reason){
+  var inn = App.state.gd.inning;
+  mut(function(s){
+    var a = Object.assign({}, s.avail); a[id] = reason;
+    var plan = s.plan.map(function(o, i){
+      if(i + 1 < inn) return Object.assign({}, o);
+      var m = Object.assign({}, o);
+      delete m[id];
+      return m;
+    });
+    var gd = {inning:s.gd.inning, actual:Object.assign({}, s.gd.actual),
+      log:s.gd.log.concat([short(id) + ' out (' + reason + ') from inning ' + inn])};
+    return {avail:a, plan:plan, gd:gd, order:s.order.filter(function(x){ return x !== id; }), modal:null};
+  }, short(id) + ' pulled - auto-fill the open spots');
+}
+
+/* ============================================================
+   CSV IMPORT
+   Two header rows: a sparse section row (Batting / Pitching / Fielding)
+   then the field row. Repeated fields such as GP, H, R, BB and SO are
+   disambiguated by section. Blanks, N/A and dashes stay null.
+   ============================================================ */
+
+function splitCsv(line){
+  var out = [], cur = '', q = false;
+  for(var i = 0; i < line.length; i++){
+    var c = line[i];
+    if(c === '"'){
+      if(q && line[i + 1] === '"'){ cur += '"'; i++; } else q = !q;
+    } else if(c === ',' && !q){ out.push(cur); cur = ''; }
+    else cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+function nz(v){
+  if(v === undefined || v === null) return null;
+  var s = String(v).trim().replace(/^﻿/, '');
+  if(s === '' || /^(n\/a|na|-{1,3}|\.)$/i.test(s)) return null;
+  return s;
+}
+function num(v){
+  if(v === null || v === undefined) return null;
+  var s = String(v).replace(/[%,\s]/g, '');
+  if(s === '') return null;
+  var n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+function norm(s){ return String(s || '').toLowerCase().replace(/[^a-z0-9%]/g, ''); }
+
+var FIELD_ALIASES = {
+  id:  {jersey:['number','no','num','jersey','uniform','#','playernumber'],
+        last:['last','lastname','surname'],
+        first:['first','firstname','given'],
+        full:['name','player','playername','fullname']},
+  batting: {GP:['gp','g','games','gamesplayed'], PA:['pa','plateappearances'], AB:['ab','atbats'],
+        H:['h','hits'], d2:['2b','double','doubles'], d3:['3b','triple','triples'],
+        HR:['hr','homerun','homeruns'], RBI:['rbi','rbis'], R:['r','runs','run'],
+        BB:['bb','walks','walk'], SO:['so','k','ks','strikeouts','strikeout'],
+        QAB:['qab','qabs','qualityatbats'], CP:['c%','contact%','contactpct','contact'],
+        HH:['hhb','hardhit','hardhitballs'], PS:['ps','pitchesseen','pseen']},
+  pitching: {IP:['ip','inningspitched'], BF:['bf','battersfaced','tbf'],
+        PIT:['#p','p','pitches','pitchcount','np'], ERA:['era'], WHIP:['whip'],
+        SP:['s%','strike%','strikepct','strikes%'],
+        FPS:['fps%','fps','firstpitchstrike%','1stpitchstrike%','fpspct'],
+        SO:['so','k','ks','strikeouts'], BB:['bb','walks'], H:['h','hits','hitsallowed'],
+        ER:['er','earnedruns'], WP:['wp','wildpitches']},
+  fielding: {TC:['tc','chances','totalchances'], A:['a','assists','ast'], PO:['po','putouts'],
+        FPCT:['fpct','fld%','fielding%','fieldingpct','fpc'], E:['e','errors','err']}
+};
+
+function matchField(group, name){
+  var n = norm(name);
+  var g = FIELD_ALIASES[group];
+  var keys = Object.keys(g);
+  for(var i = 0; i < keys.length; i++){
+    var list = g[keys[i]];
+    for(var j = 0; j < list.length; j++) if(norm(list[j]) === n) return keys[i];
+  }
+  return null;
+}
+
+function slug(s){
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '') || 'p';
+}
+
+function parseRoster(text){
+  var lines = String(text).split(/\r?\n/).filter(function(l){ return l.trim().length; });
+  if(lines.length < 3) throw new Error('Needs at least two header rows and one player row.');
+  var g = splitCsv(lines[0]), h = splitCsv(lines[1]);
+
+  /* Walk the section row left to right; a section label sticks until the next one. */
+  var section = '', cols = [];
+  h.forEach(function(name, i){
+    var grp = nz(g[i]);
+    if(grp){
+      if(/batt/i.test(grp)) section = 'batting';
+      else if(/pitch/i.test(grp)) section = 'pitching';
+      else if(/field|defen/i.test(grp)) section = 'fielding';
+    }
+    var key = matchField('id', name);
+    if(key) cols.push({i:i, group:'id', key:key});
+    else if(section){
+      var k2 = matchField(section, name);
+      if(k2) cols.push({i:i, group:section, key:k2});
+    }
+  });
+
+  var idFound = cols.some(function(c){ return c.group === 'id'; });
+  if(!idFound) throw new Error('No player name column found in the second header row.');
+
+  var used = {}, rows = [], skipped = 0;
+  lines.slice(2).forEach(function(line){
+    var c = splitCsv(line);
+    var v = {id:{}, batting:{}, pitching:{}, fielding:{}};
+    cols.forEach(function(col){ v[col.group][col.key] = nz(c[col.i]); });
+
+    var first = v.id.first, last = v.id.last;
+    if(!first && !last && v.id.full){
+      var f = v.id.full.trim();
+      if(f.indexOf(',') >= 0){ var pp = f.split(','); last = pp[0].trim(); first = (pp[1] || '').trim(); }
+      else { var ws = f.split(/\s+/); last = ws.pop(); first = ws.join(' '); }
+    }
+    if(!last && first){ last = first; first = ''; }
+    if(!last){ skipped++; return; }
+
+    var jersey = num(v.id.jersey);
+    var base = slug(first) + slug(last), id = base, k = 2;
+    while(used[id]){ id = base + k; k++; }
+    used[id] = 1;
+
+    var B = v.batting, hasB = Object.keys(B).some(function(k2){ return B[k2] !== null; });
+    var P = v.pitching, hasP = Object.keys(P).some(function(k2){ return P[k2] !== null; });
+    var F = v.fielding, hasF = Object.keys(F).some(function(k2){ return F[k2] !== null; });
+    var z = function(x){ return x === null ? 0 : x; };
+
+    rows.push([
+      id,
+      jersey === null ? '' : jersey,
+      first || '',
+      last,
+      hasB ? [z(num(B.GP)), z(num(B.PA)), z(num(B.AB)), z(num(B.H)), z(num(B.d2)), z(num(B.d3)),
+              z(num(B.HR)), z(num(B.RBI)), z(num(B.R)), z(num(B.BB)), z(num(B.SO)), z(num(B.QAB)),
+              num(B.CP), z(num(B.HH)), z(num(B.PS))] : null,
+      hasP ? [P.IP === null ? '0.0' : String(P.IP), z(num(P.BF)), z(num(P.PIT)), num(P.ERA), num(P.WHIP),
+              num(P.SP), num(P.FPS), z(num(P.SO)), z(num(P.BB)), z(num(P.H)), z(num(P.ER)), z(num(P.WP))] : null,
+      hasF ? [z(num(F.TC)), z(num(F.A)), z(num(F.PO)), num(F.FPCT), z(num(F.E))] : null,
+      {},
+      [3,3,3,3,3,3,3,3,3],
+      'flat'
+    ]);
+  });
+
+  if(!rows.length) throw new Error('No player rows found below the two header rows.');
+  return {rows:rows, cols:cols.length, skipped:skipped};
+}
+
+function importCsvFile(file){
+  var r = new FileReader();
+  r.onload = function(){
+    var parsed;
+    try{
+      parsed = parseRoster(r.result);
+    }catch(err){
+      up({csvNote:'Could not read that file. ' + (err && err.message ? err.message : '') +
+        ' Expected two header rows (a section row, then the field row). The current roster was kept.'});
+      say('CSV could not be parsed - roster kept');
+      return;
+    }
+    App.state.modal = {
+      title:'Replace the roster?',
+      body:parsed.rows.length + ' players and ' + parsed.cols + ' recognised columns were read from ' +
+        file.name + '. Importing replaces the current roster, availability and defensive plan. Coach ' +
+        'ratings reset to 3/5 and position experience starts empty, so mark eligibility on each player’s ' +
+        'Fielding tab. This cannot be undone.',
+      actions:[
+        {label:'Import ' + parsed.rows.length + ' players', primary:true, on:function(){ applyImport(parsed, file.name); }},
+        {label:'Cancel', primary:false, on:function(){ up({modal:null}); }}
+      ]
+    };
+    render();
+  };
+  r.onerror = function(){ say('Could not read that file'); };
+  r.readAsText(file);
+}
+
+function applyImport(parsed, filename){
+  App.rosterRows = parsed.rows;
+  setRoster(parsed.rows);
+  var ids = App.roster.map(function(p){ return p.id; });
+  var avail = {};
+  ids.forEach(function(id){ avail[id] = 'Available'; });
+  var n = App.state.settings.innings;
+  Object.assign(App.state, {
+    plan:blankPlan(n), locks:{}, order:ids.slice(), bLocks:{}, avail:avail,
+    innWindow:{}, restrict:{}, overrides:{}, notes:{}, versions:[], recent:[],
+    gd:{inning:1, actual:{}, log:[]}, finalized:false, hist:[], fut:[],
+    sheet:null, modal:null, sel:null, lastMove:null,
+    csvSource:filename,
+    csvNote:parsed.rows.length + ' players imported from ' + filename + ' · ' + parsed.cols +
+      ' columns keyed by section' + (parsed.skipped ? ' · ' + parsed.skipped + ' rows skipped (no name)' : '') +
+      '. Set coach ratings and position eligibility on each player, then auto-fill a lineup.'
+  });
+  persist();
+  say('Imported ' + parsed.rows.length + ' players');
+}
+
+/* ============================================================
+   VIEW
+   ============================================================ */
+
+var HANDLERS = {}, HID = 0;
+function on(fn){ var k = 'h' + (++HID); HANDLERS[k] = fn; return k; }
+function C(fn){ return 'data-c="' + on(fn) + '"'; }
+function CH(fn){ return 'data-ch="' + on(fn) + '"'; }
+function IN(fn){ return 'data-in="' + on(fn) + '"'; }
+function PD(fn){ return 'data-pd="' + on(fn) + '"'; }
+
+function view(){
+  var S = App.state;
+  var A = audit();
+  var H = health(A);
+  var W = wide();
+  var N = S.settings.innings;
+  var inn = Math.min(S.inning, N);
+  var st = S.settings;
+  var dt = new Date(st.date + 'T12:00:00');
+  var when = isNaN(dt.getTime()) ? st.date
+    : dt.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'}) + ' · ' + st.time;
+
+  var ctx = {S:S, A:A, H:H, W:W, N:N, inn:inn, st:st, when:when,
+    chipW:W ? 116 : 96, fieldH:W ? 470 : 390, sel:S.sel};
+  ctx.diamond = Math.round(ctx.fieldH * 0.42);
+  ctx.rd = rankData(A);
+
+  var body = '';
+  if(S.screen === 'games')    body = screenGames(ctx);
+  if(S.screen === 'players')  body = screenPlayers(ctx);
+  if(S.screen === 'setup')    body = screenSetup(ctx);
+  if(S.screen === 'lineup')   body = screenLineup(ctx);
+  if(S.screen === 'rankings') body = screenRankings(ctx);
+  if(S.screen === 'team')     body = screenTeam(ctx);
+
+  return '' +
+    header(ctx) +
+    '<div class="scroll" style="padding-bottom:calc(78px + env(safe-area-inset-bottom))">' +
+      '<div style="max-width:' + (W ? '880px' : 'none') + ';margin:0 auto">' + body + '</div>' +
+    '</div>' +
+    nav(ctx) +
+    sheetView(ctx) +
+    modalView(ctx) +
+    toastView(ctx);
+}
+
+function header(ctx){
+  var A = ctx.A, S = ctx.S;
+  var dot = A.red.length ? '#F87171' : '#34D399';
+  var text = A.red.length ? A.red.length + ' TO FIX' : (S.finalized ? 'FINALIZED' : 'SAVED');
+  if(App.warnStorage){ dot = '#FBBF24'; text = 'NOT SAVING'; }
+  return '<div style="background:#0F2440;color:#fff;padding:calc(12px + env(safe-area-inset-top)) 14px 10px;flex:none">' +
+    '<div style="display:flex;align-items:center;gap:10px">' +
+      '<div style="width:26px;height:26px;border-radius:7px;background:#1D4ED8;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex:none">DL</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:13px;font-weight:800;letter-spacing:.1em">DUGOUT LINEUP</div>' +
+        '<div style="font-size:11px;color:#9FB3D0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + e(ctx.st.opponent + ' · ' + ctx.when) + '</div>' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:6px;flex:none">' +
+        '<span style="width:7px;height:7px;border-radius:50%;background:' + dot + '"></span>' +
+        '<span style="font-size:10px;font-weight:700;color:#9FB3D0">' + e(text) + '</span>' +
+      '</div>' +
+    '</div></div>';
+}
+
+function nav(ctx){
+  var S = ctx.S;
+  var items = [['games','Games'],['lineup','Lineup'],['players','Players'],['rankings','Rankings'],['team','Team']];
+  var html = items.map(function(n){
+    var active = S.screen === n[0] || (n[0] === 'lineup' && S.screen === 'setup');
+    return '<button ' + C(function(){ up({screen:n[0]}); }) + ' style="flex:1;border:none;background:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:0;position:relative;min-height:44px">' +
+      '<span style="position:absolute;top:0;left:22%;right:22%;height:3px;border-radius:0 0 3px 3px;background:' + (active ? '#1D4ED8' : 'transparent') + '"></span>' +
+      '<span style="width:8px;height:8px;border-radius:2px;background:' + (active ? '#1D4ED8' : '#AEBACB') + '"></span>' +
+      '<span style="font-size:11px;font-weight:' + (active ? '800' : '600') + ';color:' + (active ? '#0F2440' : '#7C8AA0') + ';letter-spacing:.01em">' + n[1] + '</span>' +
+    '</button>';
+  }).join('');
+  return '<div class="no-print" style="position:absolute;left:0;right:0;bottom:0;height:calc(62px + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);background:#fff;border-top:1px solid #DCE3EC;display:flex;box-shadow:0 -2px 10px rgba(15,36,64,.06)">' + html + '</div>';
+}
+
+function toastView(ctx){
+  if(!ctx.S.toast) return '';
+  return '<div class="no-print" style="position:absolute;left:14px;right:14px;bottom:calc(74px + env(safe-area-inset-bottom));background:#0F2440;color:#fff;border-radius:11px;padding:11px 13px;font-size:13px;font-weight:600;box-shadow:0 8px 24px rgba(15,36,64,.32);animation:rise .18s ease-out">' + e(ctx.S.toast) + '</div>';
+}
+
+/* ---------- Games ---------- */
+function screenGames(ctx){
+  var S = ctx.S, A = ctx.A, H = ctx.H, st = ctx.st, N = ctx.N;
+  var fielders = A.ids.length;
+  var p1id = playerAt(1, 'P'), c1id = playerAt(1, 'C');
+  var facts = [
+    {k:'Available', v:fielders + ' players', c:'#0F2440'},
+    {k:'Resting each inning', v:Math.max(0, fielders - 9) + ' player' + (fielders - 9 === 1 ? '' : 's'), c:'#0F2440'},
+    {k:'Lineup', v:S.finalized ? 'Finalized' : (H.pct === 100 ? 'Draft complete' : 'Draft ' + H.pct + '%'), c:H.pct === 100 ? '#166534' : '#B45309'},
+    {k:'Warnings', v:A.red.length + ' red · ' + A.amber.length + ' amber', c:A.red.length ? '#B91C1C' : '#B45309'},
+    {k:'Starting pitcher', v:p1id ? short(p1id) : '—', c:'#0F2440'},
+    {k:'Starting catcher', v:c1id ? short(c1id) : '—', c:'#0F2440'}
+  ];
+  var secondary = [
+    {label:'Copy Last Game', on:function(){
+      if(!isSeedRoster()){ say('No previous game stored for this roster'); return; }
+      mut(function(){ return {plan:buildPlan(N, App.roster.map(function(p){ return p.id; }))}; }, 'Loaded last game’s plan');
+    }},
+    {label:'Start from Template', on:function(){
+      mut(function(s){ return {plan:s.plan.map(function(){ return {}; })}; }, 'Blank template — auto-fill to populate');
+      up({screen:'lineup', tab:'defense'});
+    }},
+    {label:'Generate Lineup', on:function(){
+      applyOrder(st.lineupMode); fillAll(); up({screen:'lineup', tab:'defense'});
+    }},
+    {label:'Edit Availability', on:function(){ up({screen:'setup'}); }}
+  ];
+
+  var factsHtml = facts.map(function(f){
+    return '<div style="background:#fff;padding:9px 14px">' +
+      '<div style="font-size:10px;font-weight:800;letter-spacing:.1em;color:#7B8CA6;text-transform:uppercase">' + e(f.k) + '</div>' +
+      '<div style="font-size:14px;font-weight:700;color:' + f.c + ';margin-top:2px">' + e(f.v) + '</div></div>';
+  }).join('');
+
+  var secHtml = secondary.map(function(s){
+    return '<button ' + C(s.on) + ' style="min-height:44px;border:1px solid #CBD5E1;border-radius:10px;background:#F8FAFC;color:#0F2440;font-size:12px;font-weight:700;padding:6px 8px">' + e(s.label) + '</button>';
+  }).join('');
+
+  var recentHtml = S.recent.length
+    ? S.recent.map(function(r){
+        return '<div style="background:#fff;border-radius:12px;border:1px solid #E2E8F0;padding:10px 12px;display:flex;align-items:center;gap:10px">' +
+          '<div style="width:44px;text-align:center;flex:none">' +
+            '<div style="font-size:13px;font-weight:800;color:' + r.rc + '">' + e(r.res) + '</div>' +
+            '<div style="font-size:15px;font-weight:800">' + e(r.score) + '</div>' +
+          '</div>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + e(r.opp) + '</div>' +
+            '<div style="font-size:11px;color:#64748B">' + e(r.meta) + '</div>' +
+            '<div style="font-size:11px;font-weight:700;color:' + r.ac + '">' + e(r.actual) + '</div>' +
+          '</div>' +
+          '<button ' + C(function(){ up({screen:'lineup', tab:'review'}); }) + ' style="flex:none;min-height:44px;padding:0 10px;border:1px solid #CBD5E1;background:#F8FAFC;border-radius:10px;font-size:11px;font-weight:700;color:#1D4ED8">Playing<br />time</button>' +
+        '</div>';
+      }).join('')
+    : '<div style="background:#fff;border-radius:12px;border:1px dashed #CBD5E1;padding:14px 12px;font-size:12.5px;color:#64748B;font-weight:600">No completed games yet. Finalize a lineup and record actual positions on Game Day.</div>';
+
+  var storageWarning = !App.warnStorage ? '' :
+    '<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:12px;padding:11px 13px">' +
+      '<div style="font-size:12px;font-weight:800;color:#92400E;letter-spacing:.06em;margin-bottom:4px">NOT SAVING ON THIS DEVICE</div>' +
+      '<div style="font-size:12px;color:#92400E;line-height:1.5">This browser is blocking local storage, so changes will be lost when you close the tab. ' +
+      'That usually means a private window or blocked site data. Open the file in a normal window, or use Download backup on the Team screen before you close it.</div>' +
+    '</div>';
+
+  return '<div style="padding:14px 14px 4px;display:flex;flex-direction:column;gap:12px">' +
+    storageWarning +
+    '<div style="background:#fff;border-radius:16px;border:1px solid #E2E8F0;box-shadow:0 2px 6px rgba(15,36,64,.07);overflow:hidden">' +
+      '<div style="padding:12px 14px;background:linear-gradient(180deg,#122C50,#0F2440);color:#fff;display:flex;align-items:flex-start;gap:10px">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:10px;font-weight:800;letter-spacing:.14em;color:#8FA9CC">NEXT GAME</div>' +
+          '<div style="font-size:19px;font-weight:800;line-height:1.2;margin-top:3px">' + e('vs ' + st.opponent) + '</div>' +
+          '<div style="font-size:12px;color:#B6C7DE;margin-top:3px">' + e(ctx.when) + '</div>' +
+          '<div style="font-size:12px;color:#B6C7DE">' + e(st.field) + '</div>' +
+        '</div>' +
+        '<div style="text-align:right;flex:none">' +
+          '<div style="font-size:26px;font-weight:800;line-height:1">' + N + '</div>' +
+          '<div style="font-size:10px;font-weight:700;color:#8FA9CC;letter-spacing:.1em">INNINGS</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#E2E8F0">' + factsHtml + '</div>' +
+      '<div style="padding:12px 14px;display:flex;flex-direction:column;gap:8px">' +
+        '<button ' + C(function(){ up({screen:'lineup', tab:'batting'}); }) + ' style="width:100%;height:50px;border:none;border-radius:12px;background:#1D4ED8;color:#fff;font-size:15px;font-weight:800;letter-spacing:.04em;box-shadow:0 2px 8px rgba(29,78,216,.32)">BUILD LINEUP</button>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' + secHtml + '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div>' +
+      '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;color:#64748B;text-transform:uppercase;margin:2px 2px 8px">Recent games</div>' +
+      '<div style="display:flex;flex-direction:column;gap:8px">' + recentHtml + '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+/* ---------- Players ---------- */
+function screenPlayers(ctx){
+  var S = ctx.S, inn = ctx.inn;
+  var rows = App.roster.map(function(p){
+    var av = S.avail[p.id] || 'Available';
+    var pos = posOf(inn, p.id);
+    var sub = (p.isNewPlayer || !p.b)
+      ? (p.isNewPlayer ? 'New player · no stats yet' : 'No batting stats on file')
+      : (f3(p.b.AVG) + ' AVG · ' + f3(p.b.OPS) + ' OPS · ' + (p.p ? p.p.inningsPitchedDisplay + ' IP' : 'no pitching'));
+    var badge = OUT_STATES[av] ? av.toUpperCase()
+      : (p.isNewPlayer ? 'NEW' : (pos ? (pos === 'REST' ? 'REST I' + inn : pos + ' I' + inn) : 'NO POS'));
+    var bg = OUT_STATES[av] ? '#FEE2E2' : (p.isNewPlayer ? '#DBEAFE' : col(pos || 'REST'));
+    var fg = OUT_STATES[av] ? '#991B1B' : (p.isNewPlayer ? '#1E40AF' : colT(pos || 'REST'));
+    return '<button ' + C(function(){ up({sheet:p.id, sheetTab:'OVERVIEW', sheetMore:false}); }) + ' style="text-align:left;background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:10px 12px;display:flex;align-items:center;gap:10px;min-height:56px">' +
+      '<span style="width:34px;height:34px;flex:none;border-radius:9px;background:#0F2440;color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center">' + e(p.jerseyNumber) + '</span>' +
+      '<span style="flex:1;min-width:0">' +
+        '<span style="display:block;font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + e(p.displayName) + '</span>' +
+        '<span style="display:block;font-size:11px;color:#64748B">' + e(sub) + '</span>' +
+      '</span>' +
+      '<span style="flex:none;font-size:10px;font-weight:800;padding:4px 7px;border-radius:6px;background:' + bg + ';color:' + fg + '">' + e(badge) + '</span>' +
+    '</button>';
+  }).join('');
+  return '<div style="padding:14px 14px 4px;display:flex;flex-direction:column;gap:8px">' +
+    '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;color:#64748B;text-transform:uppercase">Team roster · ' + App.roster.length + ' players</div>' +
+    rows + '</div>';
+}
+
+/* ---------- Setup / availability ---------- */
+function pill(label, active, fn, minH){
+  return '<button ' + C(fn) + ' style="min-height:' + (minH || 40) + 'px;padding:0 13px;border:1px solid ' +
+    (active ? '#0F2440' : '#CBD5E1') + ';background:' + (active ? '#0F2440' : '#fff') + ';color:' +
+    (active ? '#fff' : '#48586F') + ';border-radius:9px;font-size:12px;font-weight:700">' + e(label) + '</button>';
+}
+
+function screenSetup(ctx){
+  var S = ctx.S, st = ctx.st, N = ctx.N, A = ctx.A;
+  var batModes = ['Whole roster','Limited order'].map(function(m){
+    return pill(m, st.battingMode === m, function(){ up({settings:Object.assign({}, st, {battingMode:m})}); });
+  }).join('');
+  var modes = ['Development','Balanced','Competitive','Manual'].map(function(m){
+    return pill(m, st.lineupMode === m, function(){ up({settings:Object.assign({}, st, {lineupMode:m})}); });
+  }).join('');
+
+  var availRows = App.roster.map(function(p){
+    var state = S.avail[p.id] || 'Available';
+    var needsWindow = state === 'Arriving late' || state === 'Leaving early' || state === 'Selected innings';
+    var w = S.innWindow[p.id] || [];
+    var r = S.restrict[p.id] || {};
+    var opts = AVAIL.map(function(o){
+      return '<option value="' + e(o) + '"' + (o === state ? ' selected' : '') + '>' + e(o) + '</option>';
+    }).join('');
+    var chips = '';
+    if(needsWindow){
+      var cs = '';
+      for(var i = 1; i <= N; i++){
+        (function(i){
+          var active = w.indexOf(i) >= 0;
+          cs += '<button ' + C(function(){ toggleWindow(p.id, i); }) + ' style="width:44px;height:44px;border:1px solid ' +
+            (active ? '#1D4ED8' : '#CBD5E1') + ';background:' + (active ? '#1D4ED8' : '#fff') + ';color:' +
+            (active ? '#fff' : '#64748B') + ';border-radius:9px;font-size:14px;font-weight:800">' + i + '</button>';
+        })(i);
+      }
+      chips = '<div><div style="font-size:11px;color:#64748B;font-weight:600;margin-bottom:5px">' +
+        e(w.length ? 'On the field innings ' + w.join(', ') : 'Pick the innings this player is available') +
+        '</div><div style="display:flex;gap:6px;flex-wrap:wrap">' + cs + '</div></div>';
+    }
+    var restricts = [
+      {label:'No pitching',    key:'noPitch',    bg:'#FEE2E2', fg:'#991B1B', bd:'#FCA5A5'},
+      {label:'No catching',    key:'noCatch',    bg:'#FEE2E2', fg:'#991B1B', bd:'#FCA5A5'},
+      {label:'Throwing limit', key:'throwLimit', bg:'#FEF3C7', fg:'#92400E', bd:'#FCD34D'}
+    ].map(function(x){
+      var active = !!r[x.key];
+      return '<button ' + C(function(){ toggleRestrict(p.id, x.key); }) + ' style="min-height:40px;padding:0 11px;border:1px solid ' +
+        (active ? x.bd : '#CBD5E1') + ';background:' + (active ? x.bg : '#fff') + ';color:' +
+        (active ? x.fg : '#64748B') + ';border-radius:9px;font-size:11px;font-weight:700">' + e(x.label) + '</button>';
+    }).join('');
+
+    return '<div style="background:' + (OUT_STATES[state] ? '#FFF7F7' : '#fff') + ';border:1px solid #E2E8F0;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:9px">' +
+      '<div style="display:flex;align-items:center;gap:9px">' +
+        '<span style="width:30px;height:30px;flex:none;border-radius:8px;background:#0F2440;color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center">' + e(p.jerseyNumber) + '</span>' +
+        '<span style="flex:1;min-width:0;font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + e(p.displayName) + '</span>' +
+        '<select ' + CH(function(ev){ setAvail(p.id, ev.target.value); }) + ' style="flex:none;height:40px;border:1px solid #CBD5E1;border-radius:9px;background:#fff;font-size:12px;font-weight:700;padding:0 6px;max-width:148px">' + opts + '</select>' +
+      '</div>' + chips +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">' + restricts + '</div>' +
+    '</div>';
+  }).join('');
+
+  return '<div style="padding:14px 14px 4px;display:flex;flex-direction:column;gap:12px">' +
+    '<div style="background:#fff;border-radius:14px;border:1px solid #E2E8F0;padding:12px 13px;display:flex;flex-direction:column;gap:11px">' +
+      '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;color:#64748B;text-transform:uppercase">Game setup</div>' +
+      '<label style="display:block">' +
+        '<span style="display:block;font-size:11px;font-weight:700;color:#64748B;margin-bottom:4px">Opponent</span>' +
+        '<input value="' + e(st.opponent) + '" ' + IN(function(ev){ up({settings:Object.assign({}, App.state.settings, {opponent:ev.target.value})}); }) + ' style="width:100%;height:44px;border:1px solid #CBD5E1;border-radius:10px;padding:0 11px;font-size:15px;font-weight:600;background:#F8FAFC" />' +
+      '</label>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+        '<label style="flex:1;min-width:150px">' +
+          '<span style="display:block;font-size:11px;font-weight:700;color:#64748B;margin-bottom:4px">Date</span>' +
+          '<input type="date" value="' + e(st.date) + '" ' + CH(function(ev){ up({settings:Object.assign({}, App.state.settings, {date:ev.target.value})}); }) + ' style="width:100%;height:44px;border:1px solid #CBD5E1;border-radius:10px;padding:0 11px;font-size:14px;font-weight:600;background:#F8FAFC" />' +
+        '</label>' +
+        '<label style="flex:1;min-width:120px">' +
+          '<span style="display:block;font-size:11px;font-weight:700;color:#64748B;margin-bottom:4px">First pitch</span>' +
+          '<input value="' + e(st.time) + '" ' + IN(function(ev){ up({settings:Object.assign({}, App.state.settings, {time:ev.target.value})}); }) + ' style="width:100%;height:44px;border:1px solid #CBD5E1;border-radius:10px;padding:0 11px;font-size:14px;font-weight:600;background:#F8FAFC" />' +
+        '</label>' +
+        '<div style="flex:none;width:132px">' +
+          '<span style="display:block;font-size:11px;font-weight:700;color:#64748B;margin-bottom:4px">Innings</span>' +
+          '<div style="display:flex;align-items:center;gap:6px">' +
+            '<button ' + C(function(){ setInnings(N - 1); }) + ' style="width:44px;height:44px;border:1px solid #CBD5E1;background:#F8FAFC;border-radius:10px;font-size:18px;font-weight:800">−</button>' +
+            '<span style="flex:1;text-align:center;font-size:18px;font-weight:800">' + N + '</span>' +
+            '<button ' + C(function(){ setInnings(N + 1); }) + ' style="width:44px;height:44px;border:1px solid #CBD5E1;background:#F8FAFC;border-radius:10px;font-size:18px;font-weight:800">+</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<label style="display:block">' +
+        '<span style="display:block;font-size:11px;font-weight:700;color:#64748B;margin-bottom:4px">Field</span>' +
+        '<input value="' + e(st.field) + '" ' + IN(function(ev){ up({settings:Object.assign({}, App.state.settings, {field:ev.target.value})}); }) + ' style="width:100%;height:44px;border:1px solid #CBD5E1;border-radius:10px;padding:0 11px;font-size:14px;font-weight:600;background:#F8FAFC" />' +
+      '</label>' +
+      '<div>' +
+        '<span style="display:block;font-size:11px;font-weight:700;color:#64748B;margin-bottom:5px">Defensive positions (' + st.fielders + ')</span>' +
+        '<div style="font-size:13px;font-weight:700;letter-spacing:.06em;color:#334155;background:#F1F5F9;border-radius:9px;padding:9px 11px">' + POS.join('&nbsp; ') + '</div>' +
+      '</div>' +
+      '<div>' +
+        '<span style="display:block;font-size:11px;font-weight:700;color:#64748B;margin-bottom:5px">Batting</span>' +
+        '<div style="display:flex;gap:7px;flex-wrap:wrap">' + batModes + '</div>' +
+      '</div>' +
+      '<div>' +
+        '<span style="display:block;font-size:11px;font-weight:700;color:#64748B;margin-bottom:5px">Lineup mode</span>' +
+        '<div style="display:flex;gap:7px;flex-wrap:wrap">' + modes + '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div style="background:#0F2440;color:#fff;border-radius:12px;padding:11px 13px;font-size:14px;font-weight:700;letter-spacing:.01em">' +
+      e(A.ids.length + ' available · 9 fielding · ' + Math.max(0, A.ids.length - 9) + ' resting each inning') + '</div>' +
+    '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;color:#64748B;text-transform:uppercase">Availability</div>' +
+    '<div style="display:flex;flex-direction:column;gap:8px">' + availRows + '</div>' +
+  '</div>';
+}
+
+/* ---------- Lineup (tabbed) ---------- */
+function screenLineup(ctx){
+  var S = ctx.S;
+  var tabs = [['batting','Batting'],['defense','Defense'],['review','Review'],['gameday','Game Day']].map(function(t){
+    var active = S.tab === t[0];
+    return '<button ' + C(function(){ up({tab:t[0], screen:'lineup'}); }) + ' style="flex:1;min-height:40px;border:none;border-radius:9px;background:' +
+      (active ? '#0F2440' : 'transparent') + ';color:' + (active ? '#fff' : '#5A6B84') + ';font-size:12px;font-weight:800;letter-spacing:.02em">' + t[1] + '</button>';
+  }).join('');
+  var body = '';
+  if(S.tab === 'batting') body = tabBatting(ctx);
+  if(S.tab === 'defense') body = tabDefense(ctx);
+  if(S.tab === 'review')  body = tabReview(ctx);
+  if(S.tab === 'gameday') body = tabGameday(ctx);
+  return '<div>' +
+    '<div class="no-print" style="position:sticky;top:0;z-index:6;background:#F1F4F8;padding:10px 14px 8px;border-bottom:1px solid #E2E8F0">' +
+      '<div style="display:flex;background:#E7ECF3;border-radius:11px;padding:3px;gap:2px">' + tabs + '</div>' +
+    '</div>' + body + '</div>';
+}
+
+/* ---------- Batting order ---------- */
+function tabBatting(ctx){
+  var S = ctx.S, st = ctx.st, sel = ctx.sel, rd = ctx.rd;
+  var bmAll = ['AVG','OBP','OPS','Contact %','QAB %','RBI','Trend','Coach rating'];
+  var chips = bmAll.map(function(m){
+    var active = S.batMetrics.indexOf(m) >= 0;
+    return '<button ' + C(function(){
+      up({batMetrics: active ? S.batMetrics.filter(function(x){ return x !== m; }) : S.batMetrics.concat([m]).slice(-2)});
+    }) + ' style="min-height:34px;padding:0 10px;border:1px solid ' + (active ? '#0F2440' : '#CBD5E1') +
+      ';background:' + (active ? '#0F2440' : '#fff') + ';color:' + (active ? '#fff' : '#5A6B84') +
+      ';border-radius:8px;font-size:11px;font-weight:700">' + e(m) + '</button>';
+  }).join('');
+
+  function metricVal(p, m){
+    if(m === 'Coach rating') return p.ratings.contact + '/5 contact';
+    if(m === 'Trend') return p.trend === 'up' ? 'Trending up' : (p.trend === 'down' ? 'Trending down' : 'Steady');
+    if(!p.b) return '—';
+    if(m === 'AVG') return f3(p.b.AVG);
+    if(m === 'OBP') return f3(p.b.OBP);
+    if(m === 'OPS') return f3(p.b.OPS);
+    if(m === 'Contact %') return p1(p.b.contactPercent);
+    if(m === 'QAB %') return p1(p.b.QABPercent);
+    if(m === 'RBI') return String(p.b.RBI);
+    return '—';
+  }
+
+  var rankIds = rd.ranked.map(function(x){ return x.p.id; });
+  var slots = battingSlots();
+  var rows = slots.map(function(slot, i){
+    var id = slot.id, oi = slot.oi;
+    var p = App.byId[id];
+    var av = S.avail[id] || 'Available';
+    var r = S.restrict[id] || {};
+    var at = rankIds.indexOf(id);
+    var badge = p.isNewPlayer ? 'NEW' : (at >= 0 ? '#' + (at + 1) + ' ' + rd.metric.k : 'UNRANKED');
+    var selHere = sel && sel.kind === 'bat' && sel.id === id;
+    var lockedSpot = !!S.bLocks[oi];
+    var s1 = S.batMetrics[0] ? S.batMetrics[0] + ' ' + metricVal(p, S.batMetrics[0]) : '';
+    var s2 = S.batMetrics[1] ? S.batMetrics[1] + ' ' + metricVal(p, S.batMetrics[1]) : '';
+    var note = av !== 'Available' ? av : ((r.noPitch || r.noCatch || r.throwLimit) ? 'Restriction set' : '');
+    var noteC = av !== 'Available' ? '#B45309' : '#B91C1C';
+
+    return '<div data-drop="b:' + oi + '" ' + C(function(){ tapDest('b:' + oi); }) +
+      ' style="background:' + (selHere ? '#EFF6FF' : '#fff') + ';border:' + (selHere ? '2px' : '1px') +
+      ' solid ' + (selHere ? '#1D4ED8' : '#E2E8F0') + ';border-radius:12px;padding:8px 10px;display:flex;align-items:center;gap:9px;min-height:62px">' +
+      '<button ' + PD(function(ev){ startDrag(ev, 'bat', id, oi); }) + ' aria-label="Drag to reorder" style="flex:none;width:30px;height:46px;border:none;background:#F1F5F9;border-radius:8px;color:#7C8AA0;font-size:15px;font-weight:800;line-height:1;touch-action:none;cursor:grab">⠿</button>' +
+      '<span style="flex:none;width:24px;text-align:center;font-size:17px;font-weight:800;color:#0F2440">' + (i + 1) + '</span>' +
+      '<button ' + C(function(){
+          if(sel && sel.kind === 'bat' && sel.id !== id) swapOrderIdx(App.state.order.indexOf(sel.id), oi);
+          else up({sheet:id, sheetTab:'OVERVIEW', sheetMore:false});
+        }) + ' style="flex:1;min-width:0;text-align:left;border:none;background:none;padding:0">' +
+        '<span style="display:flex;align-items:center;gap:6px">' +
+          '<span style="font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + e(p.displayName) + '</span>' +
+          '<span style="font-size:11px;font-weight:700;color:#94A3B8">#' + e(p.jerseyNumber) + '</span>' +
+        '</span>' +
+        '<span style="display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap">' +
+          '<span style="font-size:10px;font-weight:800;padding:2px 6px;border-radius:5px;background:' + (p.isNewPlayer ? '#DBEAFE' : '#EEF2FF') + ';color:' + (p.isNewPlayer ? '#1E40AF' : '#3730A3') + '">' + e(badge) + '</span>' +
+          '<span style="font-size:11px;font-weight:700;color:#475569">' + e(s1) + '</span>' +
+          '<span style="font-size:11px;font-weight:700;color:#475569">' + e(s2) + '</span>' +
+          '<span style="font-size:11px;font-weight:800;color:' + noteC + '">' + e(note) + '</span>' +
+        '</span>' +
+      '</button>' +
+      '<button ' + C(function(){ toggleBLock(oi); }) + ' style="flex:none;min-width:44px;height:44px;border:none;border-radius:9px;background:' +
+        (lockedSpot ? '#0F2440' : '#F1F5F9') + ';color:' + (lockedSpot ? '#fff' : '#64748B') + ';font-size:9px;font-weight:800;letter-spacing:.04em">' +
+        (lockedSpot ? 'LOCKED' : 'LOCK') + '</button>' +
+    '</div>';
+  }).join('');
+
+  var actions = [
+    {label:'Regenerate unlocked', on:function(){ applyOrder(st.lineupMode); }},
+    {label:'Copy previous game', on:function(){
+      if(!isSeedRoster()){ say('No previous game stored for this roster'); return; }
+      mut(function(){ return {order:ACTIVE.slice()}; }, 'Previous game order restored');
+    }},
+    {label:'Rotate lineup', on:function(){ rotateOrder(); }},
+    {label:'Save version', on:function(){ saveVersion(); }},
+    {label:S.compare ? 'Hide comparison' : 'Compare modes', on:function(){ up({compare:!S.compare}); }}
+  ].map(function(a){
+    return '<button ' + C(a.on) + ' style="min-height:44px;padding:0 12px;border:1px solid #CBD5E1;background:#fff;border-radius:10px;font-size:12px;font-weight:700;color:#0F2440">' + e(a.label) + '</button>';
+  }).join('');
+
+  var versions = S.versions.length
+    ? '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:10px 12px">' +
+        '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;color:#64748B;text-transform:uppercase;margin-bottom:7px">Saved versions</div>' +
+        '<div style="display:flex;gap:7px;flex-wrap:wrap">' +
+        S.versions.map(function(v, i){
+          return '<button ' + C(function(){ loadVersion(i); }) + ' style="min-height:40px;padding:0 12px;border:1px solid #CBD5E1;background:#F8FAFC;border-radius:9px;font-size:12px;font-weight:700">' + e(v.name) + '</button>';
+        }).join('') + '</div></div>'
+    : '';
+
+  var compare = S.compare
+    ? '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">' +
+      ['Development','Balanced','Competitive'].map(function(m){
+        var names = genOrder(m).slice(0, 10).map(function(id, i){
+          return '<div style="font-size:10px;font-weight:600;color:#475569;padding:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (i + 1) + '. ' + e(short(id)) + '</div>';
+        }).join('');
+        return '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:9px 8px">' +
+          '<div style="font-size:10px;font-weight:800;color:#0F2440;letter-spacing:.04em;margin-bottom:6px">' + m + '</div>' + names +
+          '<button ' + C(function(){ applyOrder(m); }) + ' style="width:100%;min-height:36px;margin-top:7px;border:1px solid #1D4ED8;background:#EFF6FF;color:#1D4ED8;border-radius:8px;font-size:11px;font-weight:800">Use</button></div>';
+      }).join('') + '</div>'
+    : '';
+
+  var selNote = (sel && sel.kind === 'bat')
+    ? '<div style="background:#EFF6FF;border:1px solid #BFDBFE;color:#1E40AF;border-radius:10px;padding:9px 11px;font-size:12px;font-weight:700">' +
+      e('Tap another row to swap with ' + short(sel.id)) + '</div>'
+    : '';
+
+  var empty = slots.length ? '' :
+    '<div style="background:#fff;border:1px dashed #CBD5E1;border-radius:12px;padding:16px;text-align:center;font-size:13px;color:#5A6B84">Nobody is set to bat. Check availability on the Setup screen.</div>';
+
+  return '<div style="padding:12px 14px 4px;display:flex;flex-direction:column;gap:10px">' +
+    '<div><div style="font-size:11px;font-weight:800;letter-spacing:.1em;color:#64748B;text-transform:uppercase;margin-bottom:6px">Show two stats</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">' + chips + '</div></div>' +
+    selNote +
+    '<div style="display:flex;flex-direction:column;gap:7px">' + rows + empty + '</div>' +
+    '<div class="no-print" style="display:flex;gap:7px;flex-wrap:wrap">' + actions + '</div>' +
+    versions + compare +
+  '</div>';
+}
+
+/* ---------- Defense ---------- */
+function defChip(ctx, id, pos, innN, w, hHandle, hChip){
+  var S = ctx.S, sel = ctx.sel;
+  var p = App.byId[id];
+  var lk = locked(innN, id);
+  var isSel = sel && sel.kind === 'def' && sel.id === id;
+  var flash = S.lastMove && S.lastMove.inning === innN && S.lastMove.ids.indexOf(id) >= 0;
+  return '<div style="background:' + col(pos) + ';border:' + (isSel || lk ? '2px' : '1px') + ' solid ' +
+    (isSel ? '#1D4ED8' : (lk ? '#0F2440' : 'rgba(15,36,64,.16)')) +
+    ';border-radius:10px;display:flex;align-items:center;gap:2px;padding:3px;min-height:' + hChip + 'px' +
+    (w ? ';width:' + w + 'px' : '') + ';animation:' + (flash ? 'pop .22s ease-out' : 'none') + '">' +
+    '<button ' + PD(function(ev){ startDrag(ev, 'def', id, {inning:innN}); }) + ' aria-label="Drag ' + e(chipName(id)) + '" style="flex:none;width:' + (w ? 20 : 18) + 'px;height:' + hHandle + 'px;border:none;background:rgba(255,255,255,.6);border-radius:6px;color:#33455E;font-size:11px;font-weight:800;touch-action:none;cursor:grab;padding:0">⠿</button>' +
+    '<button ' + C(function(){ up({sheet:id, sheetTab:'OVERVIEW', sheetMore:false}); }) + ' style="flex:1;min-width:0;border:none;background:none;text-align:left;padding:0">' +
+      '<span style="display:block;font-size:11px;font-weight:800;color:' + colT(pos) + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2">' + e(chipName(id)) + '</span>' +
+      '<span style="display:block;font-size:9px;font-weight:700;color:' + colT(pos) + ';opacity:.72">#' + e(p.jerseyNumber) + '</span>' +
+    '</button>' +
+    '<button ' + C(function(){ toggleLock(innN, id); }) + ' aria-label="Lock" style="flex:none;width:16px;height:' + hHandle + 'px;border:none;background:none;color:' + colT(pos) + ';font-size:10px;font-weight:800;padding:0">' + (lk ? '▣' : '□') + '</button>' +
+  '</div>';
+}
+
+function fieldView(ctx){
+  var S = ctx.S, A = ctx.A, inn = ctx.inn, sel = ctx.sel, chipW = ctx.chipW, fieldH = ctx.fieldH;
+
+  var slots = POS.map(function(pos){
+    var id = playerAt(inn, pos);
+    var over = S.over === 'd:' + pos;
+    var ring = over ? '0 0 0 3px #1D4ED8' : (sel ? '0 0 0 2px #93C5FD' : 'none');
+    var inner = id
+      ? defChip(ctx, id, pos, inn, null, 39, 45)
+      : '<div style="min-height:45px;border:2px dashed #AFBDD1;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#8494AB;background:rgba(255,255,255,.72)">EMPTY</div>';
+    return '<div data-drop="d:' + pos + '" ' + C(function(){ tapDest('d:' + pos); }) +
+      ' style="position:absolute;left:' + SLOTX[pos] + '%;top:' + Math.round(SLOTY[pos] * fieldH) + 'px;transform:translateX(-50%);width:' + chipW + 'px;box-shadow:' + ring + ';border-radius:11px">' +
+      '<div style="text-align:center;height:15px;font-size:10px;font-weight:800;letter-spacing:.08em;color:#33455E">' + pos + '</div>' +
+      inner + '</div>';
+  }).join('');
+
+  var resting = A.ids.filter(function(id){ return (S.plan[inn - 1] || {})[id] === 'REST'; });
+  var unassigned = A.ids.filter(function(id){ return !(S.plan[inn - 1] || {})[id]; });
+  var benchRing = S.over === ('rest:' + inn) ? '0 0 0 3px #1D4ED8' : (sel ? '0 0 0 2px #93C5FD' : 'none');
+  var benchChips = resting.length
+    ? resting.map(function(id){ return defChip(ctx, id, 'REST', inn, chipW, 40, 46); }).join('')
+    : '<div style="flex:1;display:flex;align-items:center;justify-content:center;border:2px dashed #C7D1DF;border-radius:10px;font-size:11px;font-weight:700;color:#8494AB;min-height:46px">Nobody resting this inning</div>';
+
+  var unassignedHtml = unassigned.length
+    ? '<div style="margin-top:9px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:12px;padding:9px 11px">' +
+      '<div style="font-size:11px;font-weight:800;color:#9A3412;letter-spacing:.08em;margin-bottom:7px">UNASSIGNED — DRAG ONTO THE FIELD</div>' +
+      '<div style="display:flex;gap:7px;flex-wrap:wrap">' +
+      unassigned.map(function(id){
+        return '<div style="background:#fff;border:1px solid #FDBA74;border-radius:10px;display:flex;align-items:center;gap:3px;padding:3px;min-height:46px;width:' + chipW + 'px">' +
+          '<button ' + PD(function(ev){ startDrag(ev, 'def', id, {inning:inn}); }) + ' style="flex:none;width:20px;height:40px;border:none;background:#FFEDD5;border-radius:6px;color:#9A3412;font-size:11px;font-weight:800;touch-action:none;cursor:grab;padding:0">⠿</button>' +
+          '<button ' + C(function(){ up({sheet:id, sheetTab:'OVERVIEW', sheetMore:false}); }) + ' style="flex:1;min-width:0;border:none;background:none;text-align:left;padding:0;font-size:11px;font-weight:800;color:#9A3412">' + e(chipName(id)) + '</button>' +
+        '</div>';
+      }).join('') + '</div></div>'
+    : '';
+
+  return '<div style="max-width:560px;margin:0 auto">' +
+    '<div style="position:relative;width:100%;height:' + fieldH + 'px">' +
+      '<div style="position:absolute;left:0;right:0;top:16px;bottom:22px;background:#E9F2E4;border:1px solid #D6E4CF;border-radius:100% 100% 16px 16px"></div>' +
+      '<div style="position:absolute;left:50%;top:50%;width:' + ctx.diamond + 'px;height:' + ctx.diamond + 'px;transform:translate(-50%,-50%) rotate(45deg);background:#F3E8D8;border:1px solid #E2D2BA;border-radius:8px"></div>' +
+      slots +
+    '</div>' +
+    '<div data-drop="rest:' + inn + '" ' + C(function(){ tapDest('rest:' + inn); }) +
+      ' style="margin-top:10px;background:#fff;border:1px solid #D8E0EA;border-radius:14px;padding:10px 11px;box-shadow:' + benchRing + '">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
+        '<span style="font-size:11px;font-weight:800;letter-spacing:.12em;color:#33455E">REST / BENCH</span>' +
+        '<span style="font-size:11px;font-weight:700;color:#7C8AA0">' + resting.length + ' resting</span>' +
+      '</div>' +
+      '<div style="display:flex;gap:7px;flex-wrap:wrap;min-height:52px">' + benchChips + '</div>' +
+    '</div>' + unassignedHtml + '</div>';
+}
+
+function gridView(ctx){
+  var S = ctx.S, A = ctx.A, N = ctx.N, inn = ctx.inn, sel = ctx.sel;
+  var modes = [['player','Player View'],['position','Position View']].map(function(g){
+    var active = S.gridMode === g[0];
+    return '<button ' + C(function(){ up({gridMode:g[0]}); }) + ' style="min-height:40px;padding:0 13px;border:1px solid ' +
+      (active ? '#1D4ED8' : '#CBD5E1') + ';background:' + (active ? '#1D4ED8' : '#fff') + ';color:' +
+      (active ? '#fff' : '#5A6B84') + ';border-radius:9px;font-size:12px;font-weight:800">' + g[1] + '</button>';
+  }).join('');
+
+  var head = '';
+  for(var i = 1; i <= N; i++){
+    head += '<th style="position:sticky;top:0;z-index:3;background:' + (i === inn ? '#EFF6FF' : '#F8FAFC') +
+      ';padding:9px 6px;font-size:10px;font-weight:800;letter-spacing:.08em;color:#475569;border-bottom:1px solid #D8E0EA;border-right:1px solid #EEF2F7;min-width:88px">INN ' + i + '</th>';
+  }
+
+  var body = '';
+  if(S.gridMode === 'player'){
+    body = A.ids.map(function(id){
+      var p = App.byId[id];
+      var cells = '';
+      for(var i = 1; i <= N; i++){
+        (function(i){
+          var pos = posOf(i, id);
+          var lk = locked(i, id);
+          var isSel = sel && sel.kind === 'def' && sel.id === id && sel.meta && sel.meta.inning === i;
+          var isOver = S.over === 'g:' + id + ':' + i;
+          var warn = pos && pos !== 'REST' && (expStatus(id, pos) === 'New position' || !eligible(id, pos));
+          cells += '<td data-drop="g:' + id + ':' + i + '" ' + C(function(){ tapDest('g:' + id + ':' + i); }) +
+            ' style="padding:5px;border-bottom:1px solid #E7ECF3;border-right:1px solid #EEF2F7">' +
+            '<div ' + PD(function(ev){ startDrag(ev, 'def', id, {inning:i}); }) +
+            ' style="background:' + (pos ? col(pos) : '#F8FAFC') + ';color:' + (pos ? colT(pos) : '#94A3B8') +
+            ';border:' + (isSel || isOver ? '2px' : '1px') + ' solid ' + (isSel || isOver ? '#1D4ED8' : '#E2E8F0') +
+            ';border-radius:8px;min-height:44px;display:flex;align-items:center;justify-content:center;gap:4px;font-size:13px;font-weight:800;touch-action:none;cursor:grab">' +
+            e(pos || '—') +
+            (lk ? '<span style="font-size:9px;font-weight:800">▣</span>' : '') +
+            (warn ? '<span style="width:14px;height:14px;border-radius:50%;background:#B45309;color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center">!</span>' : '') +
+            '</div></td>';
+        })(i);
+      }
+      return '<tr><td style="position:sticky;left:0;z-index:2;background:#fff;padding:6px 11px;border-bottom:1px solid #E7ECF3;border-right:1px solid #D8E0EA">' +
+        '<button ' + C(function(){ up({sheet:id, sheetTab:'OVERVIEW', sheetMore:false}); }) + ' style="border:none;background:none;text-align:left;padding:0">' +
+        '<span style="display:block;font-size:13px;font-weight:700;color:#0F2440">' + e(p.displayName) + '</span>' +
+        '<span style="display:block;font-size:10px;font-weight:700;color:#94A3B8">#' + e(p.jerseyNumber) + ' · ' + (A.def[id] || 0) + ' inn · ' + (A.rest[id] || 0) + ' rest</span>' +
+        '</button></td>' + cells + '</tr>';
+    }).join('');
+  } else {
+    body = POS.concat(['REST']).map(function(pos){
+      var cells = '';
+      for(var i = 1; i <= N; i++){
+        (function(i){
+          if(pos === 'REST'){
+            var rs = A.ids.filter(function(id){ return (S.plan[i - 1] || {})[id] === 'REST'; });
+            cells += '<td style="padding:5px;border-bottom:1px solid #E7ECF3;border-right:1px solid #EEF2F7">' +
+              '<div style="background:#F1F5F9;color:#334155;border:1px solid #E2E8F0;border-radius:8px;min-height:44px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;text-align:center;padding:2px 4px">' +
+              e(rs.length ? rs.map(short).join(', ') : '—') + '</div></td>';
+            return;
+          }
+          var id = playerAt(i, pos);
+          var isOver = S.over === 'p:' + pos + ':' + i;
+          var lk = id ? locked(i, id) : false;
+          cells += '<td data-drop="p:' + pos + ':' + i + '" ' + C(function(){ tapDest('p:' + pos + ':' + i); }) +
+            ' style="padding:5px;border-bottom:1px solid #E7ECF3;border-right:1px solid #EEF2F7">' +
+            '<div ' + (id ? PD(function(ev){ startDrag(ev, 'def', id, {inning:i}); }) : '') +
+            ' style="background:' + (id ? col(pos) : '#FEF2F2') + ';color:' + (id ? colT(pos) : '#B91C1C') +
+            ';border:' + (isOver ? '2px' : '1px') + ' solid ' + (isOver ? '#1D4ED8' : '#E2E8F0') +
+            ';border-radius:8px;min-height:44px;display:flex;align-items:center;justify-content:center;gap:4px;font-size:11px;font-weight:800;text-align:center;padding:2px 4px;touch-action:none' + (id ? ';cursor:grab' : '') + '">' +
+            e(id ? chipName(id) : 'EMPTY') + (lk ? '<span style="font-size:9px">▣</span>' : '') + '</div></td>';
+        })(i);
+      }
+      return '<tr><td style="position:sticky;left:0;z-index:2;background:#fff;padding:6px 11px;border-bottom:1px solid #E7ECF3;border-right:1px solid #D8E0EA">' +
+        '<span style="display:inline-block;background:' + col(pos) + ';color:' + colT(pos) + ';font-size:12px;font-weight:800;padding:4px 9px;border-radius:7px">' + pos + '</span></td>' + cells + '</tr>';
+    }).join('');
+  }
+
+  return '<div><div style="display:flex;gap:7px;margin-bottom:9px">' + modes + '</div>' +
+    '<div style="background:#fff;border:1px solid #D8E0EA;border-radius:12px;overflow:auto;max-height:520px">' +
+    '<table style="border-collapse:separate;border-spacing:0;width:100%">' +
+      '<thead><tr><th style="position:sticky;left:0;top:0;z-index:4;background:#EEF2F7;text-align:left;padding:9px 11px;font-size:10px;font-weight:800;letter-spacing:.1em;color:#475569;border-bottom:1px solid #D8E0EA;border-right:1px solid #D8E0EA;min-width:150px">' +
+      (S.gridMode === 'player' ? 'PLAYER' : 'POSITION') + '</th>' + head + '</tr></thead>' +
+      '<tbody>' + body + '</tbody></table></div></div>';
+}
+
+function tabDefense(ctx){
+  var S = ctx.S, A = ctx.A, N = ctx.N, inn = ctx.inn, W = ctx.W, sel = ctx.sel;
+
+  var innChips = '';
+  for(var i = 1; i <= N; i++){
+    (function(i){
+      var active = i === inn;
+      var m = S.plan[i - 1] || {};
+      var cnt = Object.keys(m).filter(function(id){ return m[id] && m[id] !== 'REST' && inGame(id); }).length;
+      innChips += '<button ' + C(function(){ up({inning:i}); }) + ' style="width:44px;height:44px;border:1px solid ' +
+        (active ? '#0F2440' : (cnt === 9 ? '#CBD5E1' : '#FCD34D')) + ';background:' +
+        (active ? '#0F2440' : (cnt === 9 ? '#fff' : '#FEF3C7')) + ';color:' + (active ? '#fff' : '#3A4B63') +
+        ';border-radius:10px;font-size:15px;font-weight:800;position:relative">' + i +
+        '<span style="position:absolute;right:5px;bottom:5px;width:5px;height:5px;border-radius:50%;background:' +
+        (cnt === 9 ? '#34D399' : '#F59E0B') + '"></span></button>';
+    })(i);
+  }
+
+  var toggle = '';
+  if(W){
+    toggle = '<span style="display:flex;gap:6px;margin-left:auto">' +
+      [['field','Field View'],['grid','Grid View']].map(function(v){
+        var active = S.view === v[0];
+        return '<button ' + C(function(){ up({view:v[0]}); }) + ' style="min-height:44px;padding:0 12px;border:1px solid ' +
+          (active ? '#0F2440' : '#CBD5E1') + ';background:' + (active ? '#0F2440' : '#fff') + ';color:' +
+          (active ? '#fff' : '#5A6B84') + ';border-radius:10px;font-size:12px;font-weight:800">' + v[1] + '</button>';
+      }).join('') + '</span>';
+  }
+
+  var pillTxt = A.red.length ? A.red.length + ' conflict' + (A.red.length > 1 ? 's' : '')
+    : (A.amber.length ? A.amber.length + ' to review' : 'Lineup healthy');
+  var pillBg = A.red.length ? '#FEE2E2' : (A.amber.length ? '#FEF3C7' : '#DCFCE7');
+  var pillFg = A.red.length ? '#991B1B' : (A.amber.length ? '#92400E' : '#166534');
+
+  var selNote = (sel && sel.kind === 'def')
+    ? '<div style="background:#EFF6FF;border:1px solid #BFDBFE;color:#1E40AF;border-radius:10px;padding:9px 11px;font-size:12px;font-weight:700;margin-bottom:8px">' +
+      e(short(sel.id) + ' selected — tap a position or the rest tray') + '</div>' : '';
+
+  var showGrid = W && S.view === 'grid';
+  var main = showGrid ? gridView(ctx) : fieldView(ctx);
+
+  var more = [
+    {label:'Redo', on:function(){ redo(); }},
+    {label:'Duplicate to next inning', on:function(){ copyInning(inn, Math.min(N, inn + 1)); }},
+    {label:'Clear inning', on:function(){ clearInning(inn); }},
+    {label:'Regenerate unlocked', on:function(){ fill(inn, false); }},
+    {label:'Generate all innings', on:function(){ fillAll(); }},
+    {label:'Lock selection all innings', on:function(){
+      if(sel && sel.kind === 'def') lockAllInnings(sel.id); else say('Tap a player’s handle first');
+    }}
+  ].map(function(a){
+    return '<button ' + C(a.on) + ' style="min-height:40px;padding:0 11px;border:1px solid #CBD5E1;background:#fff;border-radius:9px;font-size:11px;font-weight:700;color:#33455E">' + e(a.label) + '</button>';
+  }).join('');
+
+  var bar = [
+    {label:'UNDO', on:function(){ undo(); }, bg:'#fff', fg:'#0F2440', bd:'#CBD5E1'},
+    {label:'COPY INNING', on:function(){ copyInning(inn - 1 >= 1 ? inn - 1 : 1, inn); }, bg:'#fff', fg:'#0F2440', bd:'#CBD5E1'},
+    {label:'AUTO-FILL', on:function(){ fill(inn, true); }, bg:'#fff', fg:'#0F2440', bd:'#CBD5E1'},
+    {label:'REVIEW', on:function(){ up({tab:'review'}); }, bg:'#1D4ED8', fg:'#fff', bd:'#1D4ED8'}
+  ].map(function(a){
+    return '<button ' + C(a.on) + ' style="flex:1;min-height:48px;border:1px solid ' + a.bd + ';background:' + a.bg +
+      ';color:' + a.fg + ';border-radius:11px;font-size:11px;font-weight:800;letter-spacing:.04em">' + a.label + '</button>';
+  }).join('');
+
+  return '<div style="padding:10px 14px 4px">' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:9px">' +
+      '<button ' + C(function(){ up({inning:Math.max(1, inn - 1)}); }) + ' style="flex:none;width:44px;height:44px;border:1px solid #CBD5E1;background:#fff;border-radius:10px;font-size:16px;font-weight:800;color:#0F2440">‹</button>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:16px;font-weight:800;line-height:1.1">Inning ' + inn + ' of ' + N + '</div>' +
+        '<div style="display:inline-block;margin-top:3px;font-size:10px;font-weight:800;padding:2px 7px;border-radius:5px;background:' + pillBg + ';color:' + pillFg + '">' + e(pillTxt) + '</div>' +
+      '</div>' +
+      '<button ' + C(function(){ up({inning:Math.min(N, inn + 1)}); }) + ' style="flex:none;width:44px;height:44px;border:1px solid #CBD5E1;background:#fff;border-radius:10px;font-size:16px;font-weight:800;color:#0F2440">›</button>' +
+    '</div>' +
+    '<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">' + innChips + toggle + '</div>' +
+    selNote + main +
+    '<div class="no-print" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">' + more + '</div>' +
+    '<div class="no-print" style="position:sticky;bottom:70px;margin-top:12px;display:flex;gap:6px;background:rgba(241,244,248,.94);padding:8px 0 4px;backdrop-filter:blur(6px)">' + bar + '</div>' +
+  '</div>';
+}
+
+/* ---------- Review ---------- */
+function tabReview(ctx){
+  var S = ctx.S, A = ctx.A, H = ctx.H, st = ctx.st;
+  var title = A.red.length ? 'NEEDS ATTENTION' : (A.amber.length ? 'READY WITH NOTES' : 'LINEUP READY');
+  var bg = A.red.length ? '#FEE2E2' : (A.amber.length ? '#FEF3C7' : '#DCFCE7');
+  var fg = A.red.length ? '#991B1B' : (A.amber.length ? '#92400E' : '#166534');
+  var facts = [
+    A.red.filter(function(x){ return /two players|empty/.test(x.t); }).length + ' assignment conflicts',
+    A.totalRest + ' total rest assignments',
+    A.noRest.length + ' players do not rest',
+    A.consec + ' consecutive rest innings',
+    A.ids.filter(function(id){ return A.pit[id] > 0; }).length + ' pitchers used, all eligible',
+    A.ids.filter(function(id){ return A.def[id] > 0 && !A.inf[id]; }).length + ' players with no infield assignment'
+  ].map(function(t){
+    return '<div style="font-size:12px;font-weight:700;color:' + fg + ';opacity:.92">' + e(t) + '</div>';
+  }).join('');
+
+  var healthRows = H.rows.map(function(r){
+    var c = r.ok === 2 ? '#166534' : (r.ok === 1 ? '#B45309' : '#B91C1C');
+    var b = r.ok === 2 ? '#DCFCE7' : (r.ok === 1 ? '#FEF3C7' : '#FEE2E2');
+    return '<button ' + C(function(){
+      up({modal:{title:r.k, body:r.why, actions:[{label:'Close', primary:true, on:function(){ up({modal:null}); }}]}});
+    }) + ' style="width:100%;text-align:left;border:none;background:none;border-bottom:1px solid #F1F5F9;padding:11px 13px;display:flex;align-items:center;gap:10px;min-height:48px">' +
+      '<span style="flex:1;font-size:13px;font-weight:700;color:#0F2440">' + e(r.k) + '</span>' +
+      '<span style="flex:none;font-size:11px;font-weight:800;color:' + c + ';background:' + b + ';padding:4px 9px;border-radius:6px">' + e(r.v) + '</span>' +
+      '<span style="flex:none;color:#94A3B8;font-size:14px;font-weight:800">›</span></button>';
+  }).join('');
+
+  var groups = [
+    {sev:'RED',   label:'Rule and assignment conflicts', items:A.red,   bg:'#FEE2E2', fg:'#991B1B', dot:'#DC2626'},
+    {sev:'AMBER', label:'Fairness and workload',         items:A.amber, bg:'#FEF3C7', fg:'#92400E', dot:'#D97706'},
+    {sev:'BLUE',  label:'Development suggestions',       items:S.showDevelopmentFlags === false ? [] : A.blue, bg:'#DBEAFE', fg:'#1E40AF', dot:'#2563EB'},
+    {sev:'GRAY',  label:'Information',                   items:A.gray,  bg:'#EEF2F7', fg:'#334155', dot:'#94A3B8'}
+  ].filter(function(g){ return g.items.length; }).map(function(g){
+    var items = g.items.slice(0, 14).map(function(it){
+      return '<div style="padding:9px 13px;border-bottom:1px solid #F1F5F9">' +
+        '<div style="font-size:13px;font-weight:700;color:#0F2440">' + e(it.t) + '</div>' +
+        '<div style="font-size:11.5px;color:#5A6B84;margin-top:2px;line-height:1.45">' + e(it.d) + '</div></div>';
+    }).join('');
+    return '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:13px;overflow:hidden">' +
+      '<div style="display:flex;align-items:center;gap:8px;padding:9px 13px;background:' + g.bg + '">' +
+        '<span style="width:9px;height:9px;border-radius:50%;background:' + g.dot + '"></span>' +
+        '<span style="flex:1;font-size:11px;font-weight:800;letter-spacing:.08em;color:' + g.fg + '">' + g.sev + ' · ' + e(g.label) + '</span>' +
+        '<span style="font-size:11px;font-weight:800;color:' + g.fg + '">' + g.items.length + '</span>' +
+      '</div>' + items + '</div>';
+  }).join('');
+
+  var actions = [
+    {label:'FINALIZE LINEUP', bg:'#1D4ED8', fg:'#fff', bd:'#1D4ED8', on:function(){
+      if(A.red.length){ say('Resolve ' + A.red.length + ' red item(s) first'); return; }
+      up({finalized:true, tab:'gameday'});
+      say('Lineup finalized — Game Day is ready');
+    }},
+    {label:'RETURN TO EDIT', bg:'#fff', fg:'#0F2440', bd:'#CBD5E1', on:function(){ up({tab:'defense'}); }},
+    {label:'SHARE', bg:'#fff', fg:'#0F2440', bd:'#CBD5E1', on:function(){ shareLineup(); }},
+    {label:'PRINT', bg:'#fff', fg:'#0F2440', bd:'#CBD5E1', on:function(){ window.print(); }}
+  ].map(function(a){
+    return '<button ' + C(a.on) + ' style="min-height:48px;border:1px solid ' + a.bd + ';background:' + a.bg +
+      ';color:' + a.fg + ';border-radius:11px;font-size:12px;font-weight:800;letter-spacing:.04em">' + a.label + '</button>';
+  }).join('');
+
+  return '<div style="padding:12px 14px 4px;display:flex;flex-direction:column;gap:11px">' +
+    '<div style="background:' + bg + ';border-radius:13px;padding:12px 13px">' +
+      '<div style="font-size:17px;font-weight:800;letter-spacing:.04em;color:' + fg + '">' + title + '</div>' +
+      '<div style="margin-top:7px;display:flex;flex-direction:column;gap:3px">' + facts + '</div></div>' +
+    '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:13px;overflow:hidden">' +
+      '<div style="padding:10px 13px;font-size:11px;font-weight:800;letter-spacing:.1em;color:#64748B;border-bottom:1px solid #EEF2F7">LINEUP HEALTH</div>' + healthRows + '</div>' +
+    groups +
+    '<div class="no-print" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' + actions + '</div>' +
+  '</div>';
+}
+
+function shareLineup(){
+  var S = App.state, st = S.settings, N = st.innings;
+  var lines = ['Dugout Lineup — vs ' + st.opponent, st.date + ' ' + st.time + ' · ' + st.field, ''];
+  lines.push('BATTING ORDER');
+  battingSlots().forEach(function(slot, i){
+    lines.push((i + 1) + '. ' + App.byId[slot.id].displayName + ' #' + App.byId[slot.id].jerseyNumber);
+  });
+  lines.push('');
+  lines.push('DEFENSE BY INNING');
+  var hdr = ['POS'];
+  for(var i = 1; i <= N; i++) hdr.push('I' + i);
+  lines.push(hdr.join('\t'));
+  POS.forEach(function(pos){
+    var row = [pos];
+    for(var i = 1; i <= N; i++){ var id = playerAt(i, pos); row.push(id ? short(id) : '—'); }
+    lines.push(row.join('\t'));
+  });
+  var txt = lines.join('\n');
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(function(){ say('Lineup copied to clipboard'); },
+      function(){ say('Could not copy — try Print instead'); });
+  } else {
+    say('Clipboard unavailable — try Print instead');
+  }
+}
+
+/* ---------- Game Day ---------- */
+function tabGameday(ctx){
+  var S = ctx.S, A = ctx.A, N = ctx.N, sel = ctx.sel, chipW = ctx.chipW, fieldH = ctx.fieldH;
+  var gi = Math.min(S.gd.inning, N);
+  var curP = actualPlayerAt(gi, 'P'), curC = actualPlayerAt(gi, 'C');
+  var nextIdx = Math.min(N, gi + 1);
+  var recorded = !!S.gd.actual[gi];
+
+  var changes = [];
+  if(nextIdx > gi){
+    A.ids.forEach(function(id){
+      var a = actualOf(gi, id), b = posOf(nextIdx, id);
+      if(a === b) return;
+      changes.push({name:short(id), from:a || '—', to:b || '—',
+        fbg:col(a || 'REST'), ffg:colT(a || 'REST'), tbg:col(b || 'REST'), tfg:colT(b || 'REST')});
+    });
+  }
+
+  var slots = POS.map(function(pos){
+    var id = actualPlayerAt(gi, pos);
+    var isSel = sel && sel.kind === 'gd' && sel.id === id;
+    return '<button ' + C(function(){
+      if(!id) return;
+      if(sel && sel.kind === 'gd' && sel.id !== id){
+        var a = sel.id;
+        up({sel:null, modal:{
+          title:'Swap ' + short(a) + ' and ' + short(id) + '?',
+          body:'This changes what actually happened in inning ' + gi + '. Choose whether the rest of the plan should be repaired to match.',
+          actions:[
+            {label:'This inning only', primary:false, on:function(){ gdSwap(a, id, false); }},
+            {label:'Repair future innings', primary:true, on:function(){ gdSwap(a, id, true); }},
+            {label:'Cancel', primary:false, on:function(){ up({modal:null}); }}
+          ]}});
+      } else {
+        up({sel:{kind:'gd', id:id}});
+      }
+    }) + ' style="position:absolute;left:' + SLOTX[pos] + '%;top:' + Math.round(SLOTY[pos] * fieldH) +
+      'px;transform:translateX(-50%);width:' + chipW + 'px;min-height:52px;background:' + col(pos) +
+      ';border:' + (isSel ? '3px' : '1px') + ' solid ' + (isSel ? '#1D4ED8' : 'rgba(15,36,64,.16)') +
+      ';border-radius:10px;padding:5px 4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px">' +
+      '<span style="font-size:10px;font-weight:800;letter-spacing:.08em;color:' + colT(pos) + ';opacity:.8">' + pos + '</span>' +
+      '<span style="font-size:12px;font-weight:800;color:' + colT(pos) + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">' +
+      e(id ? chipName(id) : 'EMPTY') + '</span></button>';
+  }).join('');
+
+  var changesHtml = changes.length
+    ? '<div style="display:flex;flex-direction:column;gap:6px">' + changes.map(function(c){
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #F1F5F9">' +
+          '<span style="flex:1;min-width:0;font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + e(c.name) + '</span>' +
+          '<span style="flex:none;font-size:11px;font-weight:800;padding:3px 7px;border-radius:6px;background:' + c.fbg + ';color:' + c.ffg + '">' + e(c.from) + '</span>' +
+          '<span style="flex:none;color:#94A3B8;font-size:12px;font-weight:800">→</span>' +
+          '<span style="flex:none;font-size:11px;font-weight:800;padding:3px 7px;border-radius:6px;background:' + c.tbg + ';color:' + c.tfg + '">' + e(c.to) + '</span></div>';
+      }).join('') + '</div>'
+    : '';
+
+  var nextC = playerAt(nextIdx, 'C');
+  var gear = (nextC && nextC !== curC) ? 'Put ' + short(nextC) + ' in catcher’s gear now' : 'Same catcher — no gear change';
+
+  var order = battingSlots().map(function(slot, i){
+    var pos = actualOf(gi, slot.id) || '—';
+    return '<div style="display:flex;align-items:center;gap:8px">' +
+      '<span style="flex:1;font-size:13px;font-weight:700">' + (i + 1) + '. ' + e(short(slot.id)) + '</span>' +
+      '<span style="flex:none;font-size:10px;font-weight:800;padding:3px 7px;border-radius:5px;background:' +
+      col(actualOf(gi, slot.id) || 'REST') + ';color:' + colT(actualOf(gi, slot.id) || 'REST') + '">' + e(pos) + '</span></div>';
+  }).join('');
+
+  var actions = [
+    {label:'Advance inning', bg:'#1D4ED8', fg:'#fff', bd:'#1D4ED8', on:function(){ advanceInning(); }},
+    {label:'Confirm actual positions', bg:'#fff', fg:'#0F2440', bd:'#CBD5E1', on:function(){ confirmActual(gi); }},
+    {label:'Player unavailable', bg:'#fff', fg:'#0F2440', bd:'#CBD5E1', on:function(){
+      up({modal:{title:'Who is out?', body:'They are removed from inning ' + gi + ' onward. Auto-fill the open spots afterwards.',
+        list:A.ids.map(function(id){ return {label:short(id), on:function(){ pullPlayer(id, 'Absent'); }}; }),
+        actions:[{label:'Cancel', primary:false, on:function(){ up({modal:null}); }}]}});
+    }},
+    {label:'Injury substitution', bg:'#fff', fg:'#0F2440', bd:'#CBD5E1', on:function(){
+      up({modal:{title:'Injury substitution', body:'Mark a player injured and clear them from inning ' + gi + ' onward.',
+        list:A.ids.map(function(id){ return {label:short(id), on:function(){ pullPlayer(id, 'Injured'); }}; }),
+        actions:[{label:'Cancel', primary:false, on:function(){ up({modal:null}); }}]}});
+    }},
+    {label:'Add extra inning', bg:'#fff', fg:'#0F2440', bd:'#CBD5E1', on:function(){ setInnings(N + 1); }},
+    {label:'End game early', bg:'#fff', fg:'#0F2440', bd:'#CBD5E1', on:function(){ setInnings(gi); say('Game ended after inning ' + gi); }},
+    {label:'Undo last change', bg:'#fff', fg:'#0F2440', bd:'#CBD5E1', on:function(){ undo(); }},
+    {label:'Auto-fill this inning', bg:'#fff', fg:'#0F2440', bd:'#CBD5E1', on:function(){ fill(gi, true); }}
+  ].map(function(a){
+    return '<button ' + C(a.on) + ' style="min-height:48px;border:1px solid ' + a.bd + ';background:' + a.bg +
+      ';color:' + a.fg + ';border-radius:11px;font-size:12px;font-weight:800">' + e(a.label) + '</button>';
+  }).join('');
+
+  var log = S.gd.log.length
+    ? '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:13px;padding:11px 12px">' +
+      '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;color:#64748B;margin-bottom:7px">GAME LOG</div>' +
+      S.gd.log.slice(-5).map(function(t){
+        return '<div style="font-size:12px;color:#475569;padding:3px 0">' + e(t) + '</div>';
+      }).join('') + '</div>'
+    : '';
+
+  var restingTxt = A.ids.filter(function(id){ return actualOf(gi, id) === 'REST'; }).map(short).join(', ') || 'none';
+
+  return '<div style="padding:12px 14px 4px;display:flex;flex-direction:column;gap:11px">' +
+    '<div style="background:#0F2440;color:#fff;border-radius:13px;padding:12px 13px">' +
+      '<div style="display:flex;align-items:center;gap:9px">' +
+        '<div style="flex:1"><div style="font-size:10px;font-weight:800;letter-spacing:.14em;color:#8FA9CC">CURRENT INNING</div>' +
+        '<div style="font-size:22px;font-weight:800;margin-top:2px">Inning ' + gi + ' of ' + N + '</div></div>' +
+        '<span style="flex:none;font-size:10px;font-weight:800;padding:5px 9px;border-radius:6px;background:' +
+        (recorded ? '#DCFCE7' : '#FEF3C7') + ';color:' + (recorded ? '#166534' : '#92400E') + '">' +
+        (recorded ? 'Actual positions recorded' : 'Planned — not yet confirmed') + '</span>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:11px">' +
+        '<div style="background:rgba(255,255,255,.09);border-radius:9px;padding:8px 9px"><div style="font-size:9px;font-weight:800;color:#8FA9CC;letter-spacing:.1em">PITCHER</div><div style="font-size:15px;font-weight:800;margin-top:2px">' + e(curP ? short(curP) : '—') + '</div></div>' +
+        '<div style="background:rgba(255,255,255,.09);border-radius:9px;padding:8px 9px"><div style="font-size:9px;font-weight:800;color:#8FA9CC;letter-spacing:.1em">CATCHER</div><div style="font-size:15px;font-weight:800;margin-top:2px">' + e(curC ? short(curC) : '—') + '</div></div>' +
+        '<div style="background:rgba(255,255,255,.09);border-radius:9px;padding:8px 9px"><div style="font-size:9px;font-weight:800;color:#8FA9CC;letter-spacing:.1em">RESTING</div><div style="font-size:15px;font-weight:800;margin-top:2px">' + e(restingTxt) + '</div></div>' +
+      '</div>' +
+    '</div>' +
+    '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:13px;padding:11px 12px">' +
+      '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;color:#64748B;margin-bottom:8px">ON THE FIELD NOW</div>' +
+      '<div style="font-size:11.5px;font-weight:700;color:#1E40AF;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:7px 9px;margin-bottom:9px">' +
+      e(sel && sel.kind === 'gd' ? 'Tap a second player to swap with ' + short(sel.id) : 'Tap two players to swap them mid-game') + '</div>' +
+      '<div style="position:relative;width:100%;height:' + fieldH + 'px;max-width:560px;margin:0 auto">' +
+        '<div style="position:absolute;left:0;right:0;top:16px;bottom:22px;background:#E9F2E4;border:1px solid #D6E4CF;border-radius:100% 100% 16px 16px"></div>' +
+        '<div style="position:absolute;left:50%;top:50%;width:' + ctx.diamond + 'px;height:' + ctx.diamond + 'px;transform:translate(-50%,-50%) rotate(45deg);background:#F3E8D8;border:1px solid #E2D2BA;border-radius:8px"></div>' +
+        slots +
+      '</div>' +
+    '</div>' +
+    '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:13px;padding:11px 12px">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px">' +
+        '<span style="font-size:11px;font-weight:800;letter-spacing:.1em;color:#64748B">NEXT INNING · ' + (nextIdx > gi ? 'Inning ' + nextIdx : 'Last inning') + '</span>' +
+        '<span style="font-size:11px;font-weight:700;color:#0F2440">P ' + e(playerAt(nextIdx, 'P') ? short(playerAt(nextIdx, 'P')) : '—') + ' · C ' + e(nextC ? short(nextC) : '—') + '</span>' +
+      '</div>' +
+      '<div style="background:#FEF3C7;border:1px solid #FCD34D;color:#92400E;border-radius:9px;padding:8px 10px;font-size:12px;font-weight:700;margin-bottom:9px">' + e(gear) + '</div>' +
+      changesHtml +
+    '</div>' +
+    '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:13px;padding:11px 12px">' +
+      '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;color:#64748B;margin-bottom:8px">BATTING ORDER</div>' +
+      '<div style="display:flex;flex-direction:column;gap:4px">' + order + '</div></div>' +
+    '<div class="no-print" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' + actions + '</div>' +
+    log +
+  '</div>';
+}
+
+/* ---------- Rankings ---------- */
+function screenRankings(ctx){
+  var S = ctx.S, A = ctx.A, rd = ctx.rd;
+
+  var groups = ['BATTING','PITCHING','FIELDING','PLAYING TIME','COACH RATINGS'].map(function(g){
+    var active = S.rankGroup === g;
+    return '<button ' + C(function(){
+      var m = metrics(g, A);
+      up({rankGroup:g, rankMetric:m[0].k});
+    }) + ' style="min-height:40px;padding:0 11px;border:1px solid ' + (active ? '#0F2440' : '#CBD5E1') +
+      ';background:' + (active ? '#0F2440' : '#fff') + ';color:' + (active ? '#fff' : '#5A6B84') +
+      ';border-radius:9px;font-size:11px;font-weight:800;letter-spacing:.04em">' + g + '</button>';
+  }).join('');
+
+  var mets = rd.list.map(function(m){
+    var active = rd.metric.k === m.k;
+    return '<button ' + C(function(){ up({rankMetric:m.k}); }) + ' style="min-height:36px;padding:0 10px;border:1px solid ' +
+      (active ? '#1D4ED8' : '#CBD5E1') + ';background:' + (active ? '#1D4ED8' : '#fff') + ';color:' +
+      (active ? '#fff' : '#5A6B84') + ';border-radius:8px;font-size:11px;font-weight:700">' + e(m.k) + '</button>';
+  }).join('');
+
+  var filters = ['Available today','All rostered players','Eligible pitchers','Eligible catchers',
+    'Eligible at ' + S.rankPos, 'Returning players', 'New players'].map(function(fl){
+    var active = S.rankFilter === fl;
+    return '<button ' + C(function(){ up({rankFilter:fl}); }) + ' style="min-height:36px;padding:0 10px;border:1px solid ' +
+      (active ? '#0F2440' : '#CBD5E1') + ';background:' + (active ? '#0F2440' : '#fff') + ';color:' +
+      (active ? '#fff' : '#5A6B84') + ';border-radius:8px;font-size:11px;font-weight:700">' + e(fl) + '</button>';
+  }).join('');
+
+  var posChips = POS.map(function(p){
+    var active = S.rankPos === p;
+    return '<button ' + C(function(){
+      up({rankPos:p, rankMetric:S.rankGroup === 'FIELDING' ? 'Innings at ' + p : S.rankMetric,
+        rankFilter:/^Eligible at /.test(S.rankFilter) ? 'Eligible at ' + p : S.rankFilter});
+    }) + ' style="min-width:44px;min-height:36px;border:1px solid ' + (active ? '#0F2440' : '#CBD5E1') +
+      ';background:' + (active ? '#0F2440' : '#fff') + ';color:' + (active ? '#fff' : '#5A6B84') +
+      ';border-radius:8px;font-size:11px;font-weight:800">' + p + '</button>';
+  }).join('');
+
+  var rows = rd.ranked.map(function(x, i){
+    var p = x.p;
+    var ok = eligible(p.id, S.rankPos);
+    return '<button ' + C(function(){ up({sheet:p.id, sheetTab:'OVERVIEW', sheetMore:false}); }) +
+      ' style="width:100%;text-align:left;border:none;background:' + (i % 2 ? '#FBFCFE' : '#fff') +
+      ';border-bottom:1px solid #F1F5F9;padding:9px 12px;display:flex;align-items:center;gap:9px;min-height:52px">' +
+      '<span style="flex:none;width:22px;font-size:15px;font-weight:800;color:#0F2440">' + (i + 1) + '</span>' +
+      '<span style="flex:1;min-width:0">' +
+        '<span style="display:block;font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + e(p.displayName) + '</span>' +
+        '<span style="display:block;font-size:10.5px;font-weight:700;color:#94A3B8">#' + e(p.jerseyNumber) + ' · ' + e(rd.metric.s(p) || '—') + '</span>' +
+      '</span>' +
+      '<span style="flex:none;text-align:right">' +
+        '<span style="display:block;font-size:14px;font-weight:800;color:#0F2440;font-variant-numeric:tabular-nums">' + e(rd.metric.fmt(x.v)) + '</span>' +
+        '<span style="display:block;font-size:10px;font-weight:800;color:' +
+          (p.trend === 'up' ? '#166534' : (p.trend === 'down' ? '#B91C1C' : '#94A3B8')) + '">' +
+          (p.trend === 'up' ? '▲' : (p.trend === 'down' ? '▼' : '–')) + '</span>' +
+      '</span>' +
+      '<span style="flex:none;font-size:9px;font-weight:800;padding:3px 6px;border-radius:5px;background:' +
+        (ok ? '#EEF2F7' : '#FEE2E2') + ';color:' + (ok ? '#475569' : '#991B1B') + '">' +
+        (ok ? S.rankPos : 'no ' + S.rankPos) + '</span></button>';
+  }).join('');
+
+  var unranked = rd.unranked.length
+    ? '<div style="background:#F8FAFC;border:1px dashed #CBD5E1;border-radius:13px;overflow:hidden">' +
+      '<div style="padding:9px 12px;font-size:10px;font-weight:800;letter-spacing:.1em;color:#64748B">UNRANKED</div>' +
+      rd.unranked.map(function(x){
+        return '<button ' + C(function(){ up({sheet:x.p.id, sheetTab:'OVERVIEW', sheetMore:false}); }) +
+          ' style="width:100%;text-align:left;border:none;background:none;border-top:1px solid #EEF2F7;padding:9px 12px;display:flex;align-items:center;gap:9px;min-height:48px">' +
+          '<span style="flex:none;width:22px;font-size:13px;font-weight:800;color:#94A3B8">—</span>' +
+          '<span style="flex:1;min-width:0">' +
+            '<span style="display:block;font-size:13px;font-weight:700">' + e(x.p.displayName) + '</span>' +
+            '<span style="display:block;font-size:10.5px;color:#7C8AA0;font-weight:600">' +
+            (x.p.isNewPlayer ? 'New player · no stats yet' : 'No qualifying sample for this metric') + '</span>' +
+          '</span>' +
+          (x.p.isNewPlayer ? '<span style="flex:none;font-size:10px;font-weight:800;color:#1E40AF;background:#DBEAFE;padding:3px 7px;border-radius:5px">NEW</span>' : '') +
+          '</button>';
+      }).join('') + '</div>'
+    : '';
+
+  var empty = rd.ranked.length ? '' :
+    '<div style="padding:16px;text-align:center;font-size:13px;color:#5A6B84">No players match this filter.</div>';
+
+  return '<div style="padding:12px 14px 4px;display:flex;flex-direction:column;gap:10px">' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap">' + groups + '</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap">' + mets + '</div>' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:8px 11px">' +
+      '<span style="font-size:11px;font-weight:800;color:#0F2440;letter-spacing:.04em">' + (rd.metric.dir === 'asc' ? 'Lower is better' : 'Higher is better') + '</span>' +
+      '<span style="font-size:11px;font-weight:700;color:#64748B">Min PA: ' + S.minPA + '</span></div>' +
+    '<input type="range" min="0" max="30" step="2" value="' + S.minPA + '" ' +
+      IN(function(ev){ up({minPA:parseInt(ev.target.value, 10)}); }) + ' style="width:100%;accent-color:#1D4ED8;height:32px" />' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap">' + filters + '</div>' +
+    '<div><div style="font-size:10px;font-weight:800;letter-spacing:.1em;color:#64748B;margin-bottom:5px">POSITION FOR ELIGIBILITY / INNINGS</div>' +
+      '<div style="display:flex;gap:5px;flex-wrap:wrap">' + posChips + '</div></div>' +
+    '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:13px;overflow:hidden">' + rows + empty + '</div>' +
+    unranked +
+    '<div style="font-size:11px;font-weight:700;color:#7C8AA0;padding:0 2px 4px">Coach-only. Rankings and notes never appear in parent-facing views.</div>' +
+  '</div>';
+}
+
+/* ---------- Team ---------- */
+function toggleRow(label, hint, value, fn){
+  return '<div style="display:flex;align-items:center;gap:10px">' +
+    '<div style="flex:1;min-width:0">' +
+      '<div style="font-size:13px;font-weight:700;color:#0F2440">' + e(label) + '</div>' +
+      '<div style="font-size:11px;color:#64748B;margin-top:1px">' + e(hint) + '</div></div>' +
+    '<button ' + C(fn) + ' role="switch" aria-checked="' + (value ? 'true' : 'false') + '" style="flex:none;min-width:64px;min-height:36px;border:1px solid ' +
+      (value ? '#0F2440' : '#CBD5E1') + ';background:' + (value ? '#0F2440' : '#fff') + ';color:' +
+      (value ? '#fff' : '#64748B') + ';border-radius:9px;font-size:11px;font-weight:800">' + (value ? 'ON' : 'OFF') + '</button></div>';
+}
+
+function screenTeam(ctx){
+  var S = ctx.S;
+  var facts = [
+    {k:'Team', v:'Philly Dragons 9U Travel'},
+    {k:'Season', v:'Spring 2026'},
+    {k:'Rostered', v:App.roster.length + ' players'},
+    {k:'New players', v:App.roster.filter(function(p){ return p.isNewPlayer; }).length + ' (no stats yet)'},
+    {k:'Stat source', v:S.csvSource ? 'Imported · ' + S.csvSource : 'Seed data · 8U Spring 2026 shape'},
+    {k:'Storage', v:App.canStore ? 'Saved on this device' : 'Blocked by this browser'}
+  ].map(function(t){
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 13px;border-bottom:1px solid #F1F5F9">' +
+      '<span style="font-size:11px;font-weight:800;letter-spacing:.08em;color:#7B8CA6;text-transform:uppercase">' + e(t.k) + '</span>' +
+      '<span style="font-size:13px;font-weight:700;color:#0F2440;text-align:right">' + e(t.v) + '</span></div>';
+  }).join('');
+
+  var note = S.csvNote
+    ? '<div style="margin-top:9px;background:#EFF6FF;border:1px solid #BFDBFE;color:#1E40AF;border-radius:9px;padding:9px 10px;font-size:12px;font-weight:600;line-height:1.45">' + e(S.csvNote) + '</div>'
+    : '';
+
+  return '<div style="padding:14px 14px 4px;display:flex;flex-direction:column;gap:11px">' +
+    '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:13px;overflow:hidden">' + facts + '</div>' +
+
+    '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:13px;padding:12px 13px">' +
+      '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;color:#64748B;margin-bottom:6px">IMPORT SEASON STATS</div>' +
+      '<div style="font-size:12px;color:#5A6B84;line-height:1.5;margin-bottom:9px">Two-row header CSV (section row, then field row). Repeated columns such as GP, H, R, BB and SO are keyed by section, and blanks, N/A and dashes stay null instead of becoming zero.</div>' +
+      '<label style="display:block"><input type="file" accept=".csv,text/csv" ' +
+        CH(function(ev){ var f = ev.target.files && ev.target.files[0]; if(f) importCsvFile(f); ev.target.value = ''; }) +
+        ' style="width:100%;font-size:12px;padding:9px;border:1px dashed #CBD5E1;border-radius:9px;background:#F8FAFC" /></label>' +
+      note +
+    '</div>' +
+
+    '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:13px;padding:12px 13px;display:flex;flex-direction:column;gap:12px">' +
+      '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;color:#64748B">DISPLAY</div>' +
+      toggleRow('Position colours', 'Colour-code chips and badges by position.', S.showPositionColors !== false,
+        function(){ up({showPositionColors:!(S.showPositionColors !== false)}); }) +
+      toggleRow('Development suggestions', 'Show the blue development notes on the Review tab.', S.showDevelopmentFlags !== false,
+        function(){ up({showDevelopmentFlags:!(S.showDevelopmentFlags !== false)}); }) +
+    '</div>' +
+
+    '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:13px;padding:12px 13px;display:flex;flex-direction:column;gap:9px">' +
+      '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;color:#64748B">DATA</div>' +
+      '<div style="font-size:12px;color:#5A6B84;line-height:1.5">Everything you change is saved in this browser and survives a refresh. Nothing is uploaded anywhere. Each device keeps its own copy — use a backup file to move a season between them.</div>' +
+      '<button ' + C(function(){ exportBackup(); }) + ' style="min-height:48px;border:1px solid #CBD5E1;background:#F8FAFC;color:#0F2440;border-radius:11px;font-size:13px;font-weight:800">Download backup</button>' +
+      '<label style="display:block">' +
+        '<span style="display:block;font-size:11px;font-weight:700;color:#64748B;margin-bottom:4px">Restore from a backup file</span>' +
+        '<input type="file" accept=".json,application/json" ' +
+        CH(function(ev){ var f = ev.target.files && ev.target.files[0]; if(f) restoreBackup(f); ev.target.value = ''; }) +
+        ' style="width:100%;font-size:12px;padding:9px;border:1px dashed #CBD5E1;border-radius:9px;background:#F8FAFC" /></label>' +
+      '<button ' + C(function(){
+        up({modal:{title:'Reset everything?', body:'This clears the imported roster, the plan, availability, notes and saved versions, and restores the seed roster with the default 6-inning plan. This cannot be undone.',
+          actions:[{label:'Reset', primary:true, on:function(){ up({modal:null}); resetAll(); }},
+                   {label:'Cancel', primary:false, on:function(){ up({modal:null}); }}]}});
+      }) + ' style="min-height:48px;border:1px solid #FCA5A5;background:#FEF2F2;color:#991B1B;border-radius:11px;font-size:13px;font-weight:800">Reset to seed roster</button>' +
+    '</div>' +
+  '</div>';
+}
+
+/* ---------- backup and restore ---------- */
+var BACKUP_NAME = 'dugout-lineup-backup.json';
+
+function backupJson(){
+  var d = {};
+  PERSIST_KEYS.forEach(function(k){ d[k] = App.state[k]; });
+  d.rosterRows = App.rosterRows;
+  return JSON.stringify({app:'dugout-lineup', v:3,
+    exportedAt:new Date().toISOString(), state:{v:3, d:d}}, null, 2);
+}
+
+function saveViaLink(text){
+  try{
+    var blob = new Blob([text], {type:'application/json'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = BACKUP_NAME;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+    say('Backup downloaded');
+  }catch(err){ say('Could not create the backup file'); }
+}
+
+/* Two very different hosts: opened as a local file the page downloads the blob
+   itself; published as an Artifact the viewer mediates the save and a plain
+   download link is inert, so ask the host instead. */
+function exportBackup(){
+  var json = backupJson();
+  if(!(window.claude && typeof window.claude.use === 'function')){ saveViaLink(json); return; }
+  say('Preparing backup…');
+  window.claude.use('downloads').then(function(dl){
+    if(!dl){ say('Saving files is not available in this view'); return; }
+    return dl.save({filename:BACKUP_NAME, data:json}).then(
+      function(){ say('Backup saved'); },
+      function(err){
+        var code = err && err.code;
+        if(code === 'declined') say('Backup cancelled');
+        else if(code === 'rate_limited') say('Try that again in a moment');
+        else if(code === 'too_large') say('This backup is too large to save');
+        else say('Could not save the backup here');
+      });
+  }, function(){ say('Could not save the backup here'); });
+}
+
+function restoreBackup(file){
+  var r = new FileReader();
+  r.onload = function(){
+    var payload = null;
+    try{ payload = JSON.parse(r.result); }catch(err){}
+    if(!payload || payload.app !== 'dugout-lineup' || !payload.state || !payload.state.d){
+      say('That is not a Dugout Lineup backup file');
+      return;
+    }
+    var when = 'an unknown time';
+    if(payload.exportedAt){
+      var dt = new Date(payload.exportedAt);
+      if(!isNaN(dt.getTime())) when = dt.toLocaleString();
+    }
+    var rows = payload.state.d.rosterRows;
+    App.state.modal = {
+      title:'Restore this backup?',
+      body:'Backed up ' + when + ' · ' + (rows ? rows.length + ' imported players' : 'seed roster') +
+        '. Restoring replaces the roster, plan, availability, notes and saved versions on this device.',
+      actions:[
+        {label:'Restore', primary:true, on:function(){ applyRestore(payload); }},
+        {label:'Cancel', primary:false, on:function(){ up({modal:null}); }}
+      ]
+    };
+    render();
+  };
+  r.onerror = function(){ say('Could not read that file'); };
+  r.readAsText(file);
+}
+
+function applyRestore(payload){
+  try{
+    App.rosterRows = payload.state.d.rosterRows || null;
+    setRoster(App.rosterRows || SEED);
+    App.state = boot(payload.state.d);
+    App.state.modal = null;
+    persist();
+    say('Backup restored');
+  }catch(err){
+    up({modal:null});
+    say('That backup could not be restored');
+  }
+}
+
+/* ---------- Player sheet ---------- */
+function sheetView(ctx){
+  var S = ctx.S, A = ctx.A, N = ctx.N, inn = ctx.inn;
+  if(!S.sheet || !App.byId[S.sheet]) return '';
+  var p = App.byId[S.sheet];
+  var tab = S.sheetTab;
+  var slots = battingSlots();
+  var bi = slots.map(function(x){ return x.id; }).indexOf(p.id);
+
+  var stats = [];
+  function add(k, v, s){ stats.push({k:k, v:v, s:s || ''}); }
+  if(tab === 'OVERVIEW' && p.b){
+    add('AVG', f3(p.b.AVG), p.b.AB + ' AB'); add('OBP', f3(p.b.OBP), p.b.PA + ' PA');
+    add('OPS', f3(p.b.OPS), ''); add('Contact %', p1(p.b.contactPercent), '');
+    add('QAB %', p1(p.b.QABPercent), ''); add('RBI', String(p.b.RBI), p.b.GP + ' GP');
+  } else if(tab === 'BATTING' && p.b){
+    add('AVG', f3(p.b.AVG)); add('OBP', f3(p.b.OBP)); add('OPS', f3(p.b.OPS)); add('SLG', f3(p.b.SLG));
+    add('PA', String(p.b.PA)); add('AB', String(p.b.AB)); add('H', String(p.b.H)); add('RBI', String(p.b.RBI));
+    add('Runs', String(p.b.runs)); add('BB', String(p.b.walks)); add('SO', String(p.b.strikeouts));
+    add('Contact %', p1(p.b.contactPercent)); add('QAB %', p1(p.b.QABPercent));
+    add('Trend', p.trend === 'up' ? 'Up' : (p.trend === 'down' ? 'Down' : 'Steady'));
+    if(S.sheetMore){
+      add('2B', String(p.b.doubles)); add('3B', String(p.b.triples)); add('HR', String(p.b.HR));
+      add('Hard hit', String(p.b.hardHitBalls)); add('Pitches seen', String(p.b.pitchesSeen));
+      add('P / PA', f2(p.b.pitchesPerPA)); add('QAB', String(p.b.QAB)); add('GP', String(p.b.GP));
+    }
+  } else if(tab === 'PITCHING' && p.p){
+    add('IP', p.p.inningsPitchedDisplay, ipDisp(p.p.inningsPitchedOuts) + ' checked');
+    add('ERA', f2(p.p.ERA)); add('WHIP', f2(p.p.WHIP)); add('Strike %', p1(p.p.strikePercent));
+    add('1st-pitch K %', p1(p.p.firstPitchStrikePercent)); add('Pitches / inn', f2(p.p.pitchesPerInning));
+    add('BB / inn', f2(p.p.walksPerInning)); add('SO', String(p.p.strikeouts)); add('BB', String(p.p.walks));
+    add('Eligible today', (S.restrict[p.id] || {}).noPitch ? 'No — restricted' : 'Yes');
+    if(S.sheetMore){
+      add('Batters faced', String(p.p.battersFaced)); add('Pitches', String(p.p.pitches));
+      add('Hits allowed', String(p.p.hitsAllowed)); add('Earned runs', String(p.p.earnedRuns));
+      add('Wild pitches', String(p.p.wildPitches));
+    }
+  } else if(tab === 'FIELDING' && p.f){
+    add('Fielding %', f3(p.f.fieldingPercent), p.f.totalChances + ' chances');
+    add('Chances', String(p.f.totalChances)); add('Assists', String(p.f.assists));
+    add('Putouts', String(p.f.putouts)); add('Errors', String(p.f.errors));
+    add('Innings', ipDisp(p.f.totalDefensiveOuts), 'career');
+  }
+
+  var statsHtml = stats.length
+    ? '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px">' + stats.map(function(s){
+        return '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:11px;padding:9px 10px">' +
+          '<div style="font-size:9.5px;font-weight:800;letter-spacing:.06em;color:#7B8CA6;text-transform:uppercase">' + e(s.k) + '</div>' +
+          '<div style="font-size:17px;font-weight:800;color:#0F2440;font-variant-numeric:tabular-nums;margin-top:2px">' + e(s.v) + '</div>' +
+          '<div style="font-size:9.5px;font-weight:700;color:#94A3B8">' + e(s.s) + '</div></div>';
+      }).join('') + '</div>'
+    : '';
+
+  var isEmpty = ((tab === 'BATTING' || tab === 'OVERVIEW') && !p.b) || (tab === 'PITCHING' && !p.p);
+  var emptyHtml = isEmpty
+    ? '<div style="background:#fff;border:1px dashed #CBD5E1;border-radius:13px;padding:16px 14px;text-align:center">' +
+      '<div style="font-size:13px;font-weight:800;letter-spacing:.1em;color:#1E40AF">' + (p.isNewPlayer ? 'NEW PLAYER' : 'NO DATA') + '</div>' +
+      '<div style="font-size:13px;color:#5A6B84;margin-top:6px;line-height:1.5">' +
+      (p.isNewPlayer ? 'No historical statistics are available yet. Add coach ratings or position eligibility on the Fielding tab.' : 'This player has no innings recorded for this section.') + '</div></div>'
+    : '';
+
+  var moreBtn = (tab === 'BATTING' || tab === 'PITCHING')
+    ? '<button ' + C(function(){ up({sheetMore:!S.sheetMore}); }) + ' style="min-height:44px;border:1px solid #CBD5E1;background:#fff;border-radius:10px;font-size:12px;font-weight:800;color:#1D4ED8">' +
+      (S.sheetMore ? 'Fewer stats' : 'More stats') + '</button>'
+    : '';
+
+  var body = '';
+  if(tab === 'OVERVIEW'){
+    var innRow = '';
+    for(var i = 1; i <= N; i++){
+      var ps = posOf(i, p.id);
+      innRow += '<div style="text-align:center"><div style="font-size:9px;font-weight:800;color:#94A3B8">I' + i + '</div>' +
+        '<div style="min-width:44px;min-height:34px;display:flex;align-items:center;justify-content:center;background:' +
+        col(ps || 'REST') + ';color:' + colT(ps || 'REST') + ';border-radius:8px;font-size:12px;font-weight:800;margin-top:2px">' +
+        e(ps || '—') + '</div></div>';
+    }
+    var ranks = ['BATTING','PITCHING','FIELDING'].map(function(g){
+      var m = metrics(g, A)[0];
+      var pool = App.roster.map(function(q){ return {q:q, v:m.get(q)}; })
+        .filter(function(x){ return x.v !== null && x.v !== undefined && !isNaN(x.v); });
+      pool.sort(function(x, y){ return m.dir === 'asc' ? x.v - y.v : y.v - x.v; });
+      var at = pool.map(function(x){ return x.q.id; }).indexOf(p.id);
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #F1F5F9">' +
+        '<span style="font-size:12.5px;font-weight:700;color:#334155">' + e(m.k) + '</span>' +
+        '<span style="font-size:12.5px;font-weight:800;color:#0F2440">' + (at >= 0 ? '#' + (at + 1) + ' of ' + pool.length : 'Unranked') + '</span></div>';
+    }).join('');
+    var exp = p.f ? Object.keys(p.f.positionDisplay).map(function(k){
+      return '<span style="font-size:11.5px;font-weight:800;color:#334155;background:#F1F5F9;border-radius:7px;padding:5px 9px">' + e(k + ' ' + p.f.positionDisplay[k]) + '</span>';
+    }).join('') : '';
+    var r = S.restrict[p.id] || {};
+    var restr = [];
+    if(r.noPitch) restr.push('Cannot pitch today');
+    if(r.noCatch) restr.push('Cannot catch today');
+    if(r.throwLimit) restr.push('Throwing restriction');
+    if((S.innWindow[p.id] || []).length) restr.push('Available innings ' + S.innWindow[p.id].join(', '));
+
+    body = '<div style="display:flex;flex-direction:column;gap:11px">' +
+      '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:13px;padding:11px 12px">' +
+        '<div style="font-size:10.5px;font-weight:800;letter-spacing:.1em;color:#64748B;margin-bottom:8px">DEFENSIVE PLAN</div>' +
+        '<div style="display:flex;gap:5px;flex-wrap:wrap">' + innRow + '</div>' +
+        '<div style="font-size:11.5px;font-weight:700;color:#5A6B84;margin-top:8px">' + (A.rest[p.id] || 0) + ' rest innings planned</div></div>' +
+      '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:13px;padding:11px 12px">' +
+        '<div style="font-size:10.5px;font-weight:800;letter-spacing:.1em;color:#64748B;margin-bottom:7px">CATEGORY RANKINGS</div>' + ranks + '</div>' +
+      (p.f ? '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:13px;padding:11px 12px">' +
+        '<div style="font-size:10.5px;font-weight:800;letter-spacing:.1em;color:#64748B;margin-bottom:7px">POSITION EXPERIENCE (INNINGS)</div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap">' + (exp || '<span style="font-size:12px;color:#7C8AA0">None recorded</span>') + '</div></div>' : '') +
+      (restr.length ? '<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:13px;padding:11px 12px">' +
+        '<div style="font-size:10.5px;font-weight:800;letter-spacing:.1em;color:#991B1B;margin-bottom:6px">RESTRICTIONS</div>' +
+        restr.map(function(t){ return '<div style="font-size:12.5px;font-weight:700;color:#991B1B;padding:2px 0">' + e(t) + '</div>'; }).join('') + '</div>' : '') +
+    '</div>';
+  } else if(tab === 'FIELDING'){
+    var matrix = POS.map(function(pos){
+      var o = p.f ? (p.f.positionInnings[pos] === undefined ? 0 : p.f.positionInnings[pos]) : null;
+      var stt = expStatus(p.id, pos);
+      var ov = (S.overrides[p.id] || {})[pos];
+      var ratingKey = pos === 'P' ? 'pitching' : (pos === 'C' ? 'catching' : (INFP.indexOf(pos) >= 0 ? 'infield' : 'outfield'));
+      var sBg = stt === 'Experienced' ? '#DCFCE7' : (stt === 'Some experience' ? '#FEF3C7' : (stt === 'Not eligible' ? '#FEE2E2' : (stt === 'Coach approved' ? '#DBEAFE' : '#EEF2F7')));
+      var sFg = stt === 'Experienced' ? '#166534' : (stt === 'Some experience' ? '#92400E' : (stt === 'Not eligible' ? '#991B1B' : (stt === 'Coach approved' ? '#1E40AF' : '#475569')));
+      return '<div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid #F1F5F9">' +
+        '<span style="width:38px;flex:none"><span style="display:inline-block;background:' + col(pos) + ';color:' + colT(pos) + ';font-size:11px;font-weight:800;padding:4px 7px;border-radius:6px">' + pos + '</span></span>' +
+        '<span style="width:46px;flex:none;font-size:12px;font-weight:800;color:#0F2440;font-variant-numeric:tabular-nums">' + (p.f ? (o ? ipDisp(o) : '0.0') : '—') + '</span>' +
+        '<span style="width:40px;flex:none;font-size:12px;font-weight:700;color:#475569">' + p.ratings[ratingKey] + '/5</span>' +
+        '<span style="flex:1;min-width:0"><span style="display:inline-block;font-size:10px;font-weight:800;padding:3px 7px;border-radius:5px;background:' + sBg + ';color:' + sFg + '">' + stt + '</span></span>' +
+        '<span style="width:104px;flex:none;display:flex;gap:4px;justify-content:flex-end">' +
+          '<button ' + C(function(){ setOverride(p.id, pos, 'yes'); }) + ' style="min-height:34px;padding:0 8px;border:1px solid ' +
+            (ov === 'yes' ? '#1D4ED8' : '#CBD5E1') + ';background:' + (ov === 'yes' ? '#1D4ED8' : '#fff') + ';color:' +
+            (ov === 'yes' ? '#fff' : '#64748B') + ';border-radius:7px;font-size:10px;font-weight:800">Eligible</button>' +
+          '<button ' + C(function(){ setOverride(p.id, pos, 'no'); }) + ' style="min-height:34px;padding:0 8px;border:1px solid ' +
+            (ov === 'no' ? '#B91C1C' : '#CBD5E1') + ';background:' + (ov === 'no' ? '#B91C1C' : '#fff') + ';color:' +
+            (ov === 'no' ? '#fff' : '#64748B') + ';border-radius:7px;font-size:10px;font-weight:800">Block</button>' +
+        '</span></div>';
+    }).join('');
+    body = '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:13px;overflow:hidden">' +
+      '<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:#EEF2F7;font-size:9.5px;font-weight:800;letter-spacing:.06em;color:#475569">' +
+        '<span style="width:38px">POS</span><span style="width:46px">INN</span><span style="width:40px">RATE</span>' +
+        '<span style="flex:1">STATUS</span><span style="width:104px;text-align:right">ELIGIBLE TODAY</span></div>' + matrix + '</div>';
+  } else if(tab === 'NOTES'){
+    body = '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:13px;padding:11px 12px">' +
+      '<div style="font-size:10.5px;font-weight:800;letter-spacing:.1em;color:#64748B;margin-bottom:7px">COACH NOTES · PRIVATE</div>' +
+      '<textarea ' + IN(function(ev){
+        var v = ev.target.value;
+        var notes = Object.assign({}, App.state.notes);
+        notes[p.id] = v;
+        App.state.notes = notes;
+        persist();
+      }) + ' placeholder="Reads the ball well in left. Needs reps at second." style="width:100%;min-height:130px;border:1px solid #CBD5E1;border-radius:10px;padding:10px;font-size:13.5px;line-height:1.5;background:#F8FAFC;resize:vertical">' +
+      e(S.notes[p.id] || '') + '</textarea></div>';
+  }
+
+  var av = S.avail[p.id] || 'Available';
+  var tabsHtml = ['OVERVIEW','BATTING','PITCHING','FIELDING','NOTES'].map(function(t){
+    var active = tab === t;
+    return '<button ' + C(function(){ up({sheetTab:t, sheetMore:false}); }) + ' style="flex:1;min-height:38px;border:none;border-radius:7px;background:' +
+      (active ? '#0F2440' : 'transparent') + ';color:' + (active ? '#fff' : '#5A6B84') + ';font-size:10px;font-weight:800;letter-spacing:.04em">' + t + '</button>';
+  }).join('');
+
+  return '<div class="no-print" style="position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;justify-content:flex-end">' +
+    '<button ' + C(function(){ up({sheet:null, sheetMore:false}); }) + ' aria-label="Close" style="position:absolute;inset:0;border:none;background:rgba(15,36,64,.44);animation:fade .16s ease-out"></button>' +
+    '<div style="position:relative;background:#F1F4F8;border-radius:20px 20px 0 0;max-height:92%;display:flex;flex-direction:column;animation:rise .22s ease-out;box-shadow:0 -10px 34px rgba(15,36,64,.28)">' +
+      '<div style="flex:none;background:#0F2440;color:#fff;border-radius:20px 20px 0 0;padding:12px 14px">' +
+        '<div style="display:flex;align-items:flex-start;gap:10px">' +
+          '<span style="flex:none;width:38px;height:38px;border-radius:10px;background:#1D4ED8;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800">#' + e(p.jerseyNumber) + '</span>' +
+          '<span style="flex:1;min-width:0">' +
+            '<span style="display:flex;align-items:center;gap:7px">' +
+              '<span style="font-size:18px;font-weight:800">' + e(p.displayName) + '</span>' +
+              (p.isNewPlayer ? '<span style="font-size:9px;font-weight:800;background:#DBEAFE;color:#1E40AF;padding:3px 6px;border-radius:5px;letter-spacing:.06em">NEW</span>' : '') +
+            '</span>' +
+            '<span style="display:block;font-size:11.5px;color:#B6C7DE;margin-top:3px">' +
+            e((bi >= 0 ? 'Batting ' + (bi + 1) : 'Not in batting order') + ' · ' +
+              (posOf(inn, p.id) ? 'Inning ' + inn + ': ' + posOf(inn, p.id) : 'Inning ' + inn + ': unassigned')) + '</span>' +
+          '</span>' +
+          '<span style="flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:6px">' +
+            '<span style="font-size:9px;font-weight:800;padding:4px 7px;border-radius:5px;background:' +
+              (OUT_STATES[av] ? '#FEE2E2' : '#DCFCE7') + ';color:' + (OUT_STATES[av] ? '#991B1B' : '#166534') + '">' + e(av) + '</span>' +
+            '<button ' + C(function(){ up({sheet:null, sheetMore:false}); }) + ' style="width:44px;height:34px;border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.1);color:#fff;border-radius:9px;font-size:14px;font-weight:800">✕</button>' +
+          '</span>' +
+        '</div>' +
+        '<div style="display:flex;gap:3px;margin-top:11px;background:rgba(255,255,255,.09);border-radius:9px;padding:3px">' + tabsHtml + '</div>' +
+      '</div>' +
+      '<div style="flex:1;overflow-y:auto;padding:12px 14px 20px;display:flex;flex-direction:column;gap:11px">' +
+        emptyHtml + statsHtml + moreBtn + body +
+      '</div>' +
+    '</div></div>';
+}
+
+/* ---------- Modal ---------- */
+function modalView(ctx){
+  var m = ctx.S.modal;
+  if(!m) return '';
+  var list = (m.list && m.list.length)
+    ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:11px">' + m.list.map(function(l){
+        return '<button ' + C(l.on) + ' style="min-height:44px;padding:0 11px;border:1px solid #CBD5E1;background:#F8FAFC;border-radius:9px;font-size:12px;font-weight:700">' + e(l.label) + '</button>';
+      }).join('') + '</div>'
+    : '';
+  var actions = (m.actions || []).map(function(a){
+    return '<button ' + C(a.on) + ' style="min-height:46px;border:1px solid ' + (a.primary ? '#1D4ED8' : '#CBD5E1') +
+      ';background:' + (a.primary ? '#1D4ED8' : '#fff') + ';color:' + (a.primary ? '#fff' : '#0F2440') +
+      ';border-radius:10px;font-size:13px;font-weight:800">' + e(a.label) + '</button>';
+  }).join('');
+  return '<div class="no-print" style="position:absolute;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;padding:20px">' +
+    '<button ' + C(function(){ up({modal:null}); }) + ' aria-label="Close" style="position:absolute;inset:0;border:none;background:rgba(15,36,64,.5)"></button>' +
+    '<div role="dialog" aria-modal="true" style="position:relative;width:100%;max-width:360px;background:#fff;border-radius:16px;padding:15px 15px 13px;box-shadow:0 16px 40px rgba(15,36,64,.34);animation:rise .18s ease-out;max-height:80%;overflow-y:auto">' +
+      '<div style="font-size:16px;font-weight:800;color:#0F2440;line-height:1.3">' + e(m.title) + '</div>' +
+      '<div style="font-size:13px;color:#5A6B84;line-height:1.55;margin-top:7px">' + e(m.body) + '</div>' + list +
+      '<div style="display:flex;flex-direction:column;gap:7px;margin-top:13px">' + actions + '</div>' +
+    '</div></div>';
+}
+
+/* ============================================================
+   DOM PATCHING
+   The view is a string. Rather than replacing innerHTML - which would
+   lose scroll position, focus, caret and in-flight pointer captures -
+   the new tree is diffed against the live one and only differences applied.
+   ============================================================ */
+
+function syncAttrs(o, n){
+  var i, at;
+  var na = n.attributes;
+  for(i = 0; i < na.length; i++){
+    at = na[i];
+    if(o.getAttribute(at.name) !== at.value) o.setAttribute(at.name, at.value);
+  }
+  var oa = Array.prototype.slice.call(o.attributes);
+  for(i = 0; i < oa.length; i++){
+    if(!n.hasAttribute(oa[i].name)) o.removeAttribute(oa[i].name);
+  }
+}
+
+function patchNode(parent, o, n){
+  if(o.nodeType !== n.nodeType || (o.nodeType === 1 && o.tagName !== n.tagName)){
+    parent.replaceChild(n, o);
+    return;
+  }
+  if(o.nodeType === 3 || o.nodeType === 8){
+    if(o.nodeValue !== n.nodeValue) o.nodeValue = n.nodeValue;
+    return;
+  }
+  if(o.nodeType !== 1) return;
+
+  syncAttrs(o, n);
+  var tag = o.tagName;
+
+  if(tag === 'INPUT'){
+    var type = (n.getAttribute('type') || 'text').toLowerCase();
+    if(type === 'file') return;                       // never reset a file picker
+    if(type === 'checkbox' || type === 'radio'){ o.checked = n.hasAttribute('checked'); return; }
+    if(document.activeElement !== o){                 // don't fight the user's caret
+      var v = n.getAttribute('value');
+      if(v !== null && o.value !== v) o.value = v;
+    }
+    return;
+  }
+  if(tag === 'TEXTAREA'){
+    if(document.activeElement !== o && o.value !== n.textContent) o.value = n.textContent;
+    return;
+  }
+
+  patchChildren(o, n);
+
+  if(tag === 'SELECT'){
+    var want = null;
+    Array.prototype.forEach.call(n.querySelectorAll('option'), function(op){
+      if(op.hasAttribute('selected')) want = op.value;
+    });
+    if(want !== null && o.value !== want) o.value = want;
+  }
+}
+
+function patchChildren(a, b){
+  var an = Array.prototype.slice.call(a.childNodes);
+  var bn = Array.prototype.slice.call(b.childNodes);
+  var i;
+  for(i = 0; i < bn.length; i++){
+    if(i < an.length) patchNode(a, an[i], bn[i]);
+    else a.appendChild(bn[i]);
+  }
+  for(i = an.length - 1; i >= bn.length; i--) a.removeChild(an[i]);
+}
+
+function morph(root, html){
+  var tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  patchChildren(root, tmp);
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+
+function render(){
+  HANDLERS = {}; HID = 0;
+  var html;
+  try{
+    html = view();
+  }catch(err){
+    fail(err);
+    return;
+  }
+  morph(document.getElementById('app'), html);
+}
+
+function fail(err){
+  var el = document.getElementById('boot-error');
+  if(!el) return;
+  el.style.display = 'block';
+  el.textContent = 'Dugout Lineup hit an error and stopped.\n\n' +
+    (err && err.stack ? err.stack : String(err)) +
+    '\n\nReload the page. If it keeps happening, run this in the browser console to clear saved data:\n' +
+    "  localStorage.removeItem('" + LS + "'); location.reload();";
+  if(window.console && console.error) console.error(err);
+}
+
+/* ============================================================
+   POINTER DRAG AND DROP
+   One code path drives both mouse and touch. A press that never moves
+   more than a few pixels is treated as a tap: it selects the player so
+   the next tap on a position drops them there.
+   ============================================================ */
+
+function startDrag(ev, kind, id, meta){
+  var innForLock = (meta && meta.inning) ? meta.inning : App.state.inning;
+  if(kind === 'def' && locked(innForLock, id)){ say('Locked — unlock to move ' + short(id)); return; }
+  if(ev.button !== undefined && ev.button !== 0) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+
+  var st = {x:ev.clientX, y:ev.clientY, moved:false};
+  var ghost = document.getElementById('ghost');
+
+  function mv(e2){
+    var dx = e2.clientX - st.x, dy = e2.clientY - st.y;
+    if(!st.moved && Math.abs(dx) + Math.abs(dy) < 7) return;
+    if(!st.moved){
+      st.moved = true;
+      App.state.drag = {kind:kind, id:id, meta:meta};
+      App.state.sel = null;
+      ghost.textContent = short(id);
+      ghost.hidden = false;
+      render();
+    }
+    ghost.style.transform = 'translate(' + (e2.clientX - 46) + 'px,' + (e2.clientY - 20) + 'px)';
+    var el = document.elementFromPoint(e2.clientX, e2.clientY);
+    var dz = (el && el.closest) ? el.closest('[data-drop]') : null;
+    var key = dz ? dz.getAttribute('data-drop') : null;
+    if(key !== App.state.over){ App.state.over = key; render(); }
+  }
+
+  function done(){
+    window.removeEventListener('pointermove', mv);
+    window.removeEventListener('pointerup', done);
+    window.removeEventListener('pointercancel', done);
+    ghost.hidden = true;
+    if(st.moved){
+      var key = App.state.over;
+      App.state.drag = null;
+      App.state.over = null;
+      if(key) drop(key, kind, id, meta); else render();
+    } else {
+      var s = App.state.sel;
+      App.state.sel = (s && s.id === id && s.kind === kind) ? null : {kind:kind, id:id, meta:meta};
+      render();
+    }
+  }
+
+  window.addEventListener('pointermove', mv);
+  window.addEventListener('pointerup', done);
+  window.addEventListener('pointercancel', done);
+}
+
+function drop(key, kind, id, meta){
+  var parts = String(key).split(':');
+  if(kind === 'bat'){
+    if(parts[0] === 'b') moveOrder(meta, parseInt(parts[1], 10));
+    else render();
+    return;
+  }
+  if(parts[0] === 'd'){ assign(App.state.inning, id, parts[1]); return; }
+  if(parts[0] === 'rest'){ assign(parseInt(parts[1] || App.state.inning, 10), id, 'REST'); return; }
+  if(parts[0] === 'g'){
+    var tid = parts[1], inn = parseInt(parts[2], 10);
+    if(tid === id){ render(); return; }
+    var srcInn = (meta && meta.inning) || App.state.inning;
+    if(inn !== srcInn){ say('Moves stay inside one inning'); return; }
+    assign(inn, id, posOf(inn, tid) || 'REST');
+    return;
+  }
+  if(parts[0] === 'p'){ assign(parseInt(parts[2], 10), id, parts[1]); return; }
+  render();
+}
+
+function tapDest(key){
+  var s = App.state.sel;
+  if(!s) return;
+  drop(key, s.kind, s.id, s.meta);
+}
+
+/* ============================================================
+   EVENT DELEGATION
+   Handlers live in a table that is rebuilt each render; the markup only
+   carries the key. That keeps the diff cheap and avoids stale closures.
+   ============================================================ */
+
+function elOf(ev){
+  var t = ev.target;
+  if(!t) return null;
+  return t.nodeType === 1 ? t : t.parentElement;
+}
+function fire(attr, ev){
+  var t = elOf(ev);
+  if(!t) return;
+  var el = t.closest('[' + attr + ']');
+  if(!el) return;
+  var fn = HANDLERS[el.getAttribute(attr)];
+  if(fn) fn(ev);
+}
+
+function wireEvents(root){
+  root.addEventListener('click', function(ev){
+    var t = elOf(ev);
+    /* A press that started on a drag handle is owned by the pointer
+       handler, which already decided between "tap to select" and "drag". */
+    if(t && t.closest('[data-pd]')) return;
+    fire('data-c', ev);
+  });
+  root.addEventListener('change', function(ev){ fire('data-ch', ev); });
+  root.addEventListener('input',  function(ev){ fire('data-in', ev); });
+  root.addEventListener('pointerdown', function(ev){ fire('data-pd', ev); });
+
+  document.addEventListener('keydown', function(ev){
+    if(ev.key !== 'Escape') return;
+    if(App.state.modal){ up({modal:null}); return; }
+    if(App.state.sheet){ up({sheet:null, sheetMore:false}); return; }
+    if(App.state.sel){ up({sel:null}); }
+  });
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+
+function start(){
+  try{
+    App.state = boot();
+  }catch(err){
+    /* Corrupt or incompatible saved data: start clean rather than dying. */
+    try{ localStorage.removeItem(LS); }catch(e2){}
+    App.rosterRows = null;
+    App.state = boot();
+  }
+
+  var root = document.getElementById('app');
+  wireEvents(root);
+
+  var lastWide = wide();
+  var rz;
+  window.addEventListener('resize', function(){
+    clearTimeout(rz);
+    rz = setTimeout(function(){
+      var w = wide();
+      if(w !== lastWide){ lastWide = w; render(); }
+    }, 120);
+  });
+  window.addEventListener('orientationchange', function(){ setTimeout(render, 250); });
+
+  render();
+}
+
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){
+  try{ start(); }catch(err){ fail(err); }
+});
+else {
+  try{ start(); }catch(err){ fail(err); }
+}
+
+})();
+</script>
+</body>
+</html>
