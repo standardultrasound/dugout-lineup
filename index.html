@@ -157,6 +157,11 @@ var ACTIVE = Object.keys(DEMO);
    older sheet picks up the new one instead of booting the stale plan. */
 var SEED_STAMP = '2026-08-30-eom';
 
+/* Bump when a stored preference default changes. Unlike SEED_STAMP this
+   never touches the plan, so it is safe to move on its own.
+   2: rankings default from "Available today" to "All rostered players". */
+var PREF_VERSION = 2;
+
 /* No completed games this season yet. */
 var RECENT_SEED = [];
 
@@ -315,7 +320,10 @@ function boot(savedOverride){
       battingMode:'Whole roster', lineupMode:'Balanced'},
     seedStamp:SEED_STAMP,
     batMetrics:['AVG','OBP'], compare:false, versions:[],
-    rankGroup:'BATTING', rankMetric:'AVG', rankFilter:'Available today', minPA:0, rankPos:'SS',
+    /* Rankings are season stats, so they show the whole roster by default.
+       Filtering them by who is available today hides a player from his own
+       record just because he is missing this one game. */
+    rankGroup:'BATTING', rankMetric:'AVG', rankFilter:'All rostered players', minPA:0, rankPos:'SS',
     gd:{inning:1, actual:{}, log:[]}, finalized:false,
     hist:[], fut:[], sheet:null, sheetTab:'OVERVIEW', sheetMore:false,
     modal:null, toast:'', sel:null, drag:null, over:null, lastMove:null,
@@ -335,8 +343,15 @@ function boot(savedOverride){
     App.sheetUpdated = true;
   }
 
+  /* Only clear the stored value if it is the old default, so a coach who
+     deliberately picked "Available today" keeps their choice. */
+  if(saved && (saved.prefVersion || 1) < 2 && saved.rankFilter === 'Available today'){
+    delete saved.rankFilter;
+  }
+
   if(saved) Object.assign(base, saved);
   base.seedStamp = SEED_STAMP;
+  base.prefVersion = PREF_VERSION;
   base.hist = []; base.fut = [];
   base.sheet = null; base.modal = null; base.toast = '';
   base.sel = null; base.drag = null; base.over = null; base.lastMove = null;
@@ -346,7 +361,7 @@ function boot(savedOverride){
 var PERSIST_KEYS = ['plan','locks','order','bLocks','avail','innWindow','restrict','overrides','notes',
   'settings','batMetrics','versions','gd','finalized','rankGroup','rankMetric','rankFilter','minPA',
   'rankPos','screen','tab','inning','view','gridMode','csvNote','csvSource','recent',
-  'showPositionColors','showDevelopmentFlags','rosterRows','seedStamp'];
+  'showPositionColors','showDevelopmentFlags','rosterRows','seedStamp','prefVersion'];
 
 function persist(){
   var S = App.state, d = {};
