@@ -85,26 +85,30 @@ var SEED = [
   ['vince',11,'Vincenzo','McDuff',[12,36,28,11,3,1,1,13,12,6,2,26,92.9,8,140],['5.0',24,88,3.60,1.40,60,54,7,4,3,2,1],[33,12,19,0.939,2],{CF:'18.0',SS:'12.0','2B':'8.0',P:'5.0'},[5,4,4,4,4,4,3,5,1],'up']
 ];
 
-/* Last game's defensive plan, used by "Copy Last Game". */
+/* The game sheet the app starts from. Key order is the batting order;
+   each array is that player's position for innings 1-6.
+   Changing this needs a new SEED_STAMP to reach devices that already
+   have saved data - see boot(). */
 var DEMO = {
-  ritz:   ['CF','CF','CF','2B','REST','SS'],
-  lucas:  ['C','C','1B','1B','P','P'],
-  eli:    ['P','P','3B','3B','2B','2B'],
-  will:   ['1B','1B','C','C','C','C'],
-  jj:     ['SS','SS','SS','SS','SS','REST'],
-  liam:   ['2B','2B','2B','REST','1B','1B'],
-  depew:  ['3B','3B','P','P','3B','3B'],
-  forrest:['LF','RF','REST','CF','CF','CF'],
-  jesse:  ['RF','REST','LF','LF','LF','LF'],
-  emory:  ['REST','LF','RF','RF','RF','RF']
+  liam:   ['2B','2B','REST','P','2B','2B'],
+  ritz:   ['1B','SS','SS','CF','CF','CF'],
+  eli:    ['REST','P','3B','3B','3B','3B'],
+  lucas:  ['P','1B','1B','1B','C','C'],
+  will:   ['C','C','C','C','1B','1B'],
+  depew:  ['3B','3B','CF','2B','REST','P'],
+  forrest:['CF','CF','2B','REST','P','LF'],
+  jj:     ['SS','REST','P','SS','SS','SS'],
+  jesse:  ['LF','LF','RF','RF','LF','REST'],
+  emory:  ['RF','RF','LF','LF','RF','RF']
 };
 var ACTIVE = Object.keys(DEMO);
 
-var RECENT_SEED = [
-  {res:'W', rc:'#166534', score:'11-6', opp:'vs Nazareth Blue',  meta:'Aug 22 - 6 of 6 innings played',       actual:'Actual positions recorded',   ac:'#166534'},
-  {res:'L', rc:'#B91C1C', score:'4-9',  opp:'at Saucon Valley',  meta:'Aug 16 - 5 of 6 innings (time limit)', actual:'Actual positions recorded',   ac:'#166534'},
-  {res:'T', rc:'#B45309', score:'8-8',  opp:'vs Parkland Green', meta:'Aug 9 - 6 of 6 innings',               actual:'Planned only - not confirmed', ac:'#B45309'}
-];
+/* Bump whenever DEMO or the default settings change, so a device holding an
+   older sheet picks up the new one instead of booting the stale plan. */
+var SEED_STAMP = '2026-08-30-eom';
+
+/* No completed games this season yet. */
+var RECENT_SEED = [];
 
 /* ---------- number formatting ---------- */
 function sd(a, b){ var v = a / b; return (b && isFinite(v)) ? v : null; }
@@ -244,9 +248,10 @@ function boot(savedOverride){
     plan: seedMode ? buildPlan(6, ids) : blankPlan(6),
     locks:{}, order: seedMode ? ACTIVE.slice() : ids.slice(), bLocks:{},
     avail:avail, innWindow:{}, restrict:{}, overrides:{}, notes:{},
-    settings:{opponent:'Lehigh Valley Storm', date:'2026-09-12', time:'10:00 AM',
-      field:'Memorial Park - Field 2', innings:6, fielders:9,
+    settings:{opponent:'EOM Angels 9U', date:'2026-08-30', time:'1:45 PM',
+      field:'1500 Pattison Ave', innings:6, fielders:9,
       battingMode:'Whole roster', lineupMode:'Balanced'},
+    seedStamp:SEED_STAMP,
     batMetrics:['AVG','OBP'], compare:false, versions:[],
     rankGroup:'BATTING', rankMetric:'AVG', rankFilter:'Available today', minPA:0, rankPos:'SS',
     gd:{inning:1, actual:{}, log:[]}, finalized:false,
@@ -256,7 +261,20 @@ function boot(savedOverride){
     showPositionColors:true, showDevelopmentFlags:true,
     rosterRows:null
   };
+  /* A new built-in game sheet has to reach devices that already hold saved
+     data, which would otherwise keep booting the old plan. Drop only the keys
+     the sheet defines and let the defaults above fill them back in; coach
+     notes, eligibility overrides, restrictions and saved versions are kept.
+     Skipped once a CSV roster is imported - the sheet's player ids no longer
+     apply, and that roster's plan is the coach's own. */
+  if(saved && !App.rosterRows && saved.seedStamp !== SEED_STAMP){
+    ['plan','order','avail','settings','locks','bLocks','innWindow','gd',
+     'finalized','recent','inning'].forEach(function(k){ delete saved[k]; });
+    App.sheetUpdated = true;
+  }
+
   if(saved) Object.assign(base, saved);
+  base.seedStamp = SEED_STAMP;
   base.hist = []; base.fut = [];
   base.sheet = null; base.modal = null; base.toast = '';
   base.sel = null; base.drag = null; base.over = null; base.lastMove = null;
@@ -266,7 +284,7 @@ function boot(savedOverride){
 var PERSIST_KEYS = ['plan','locks','order','bLocks','avail','innWindow','restrict','overrides','notes',
   'settings','batMetrics','versions','gd','finalized','rankGroup','rankMetric','rankFilter','minPA',
   'rankPos','screen','tab','inning','view','gridMode','csvNote','csvSource','recent',
-  'showPositionColors','showDevelopmentFlags','rosterRows'];
+  'showPositionColors','showDevelopmentFlags','rosterRows','seedStamp'];
 
 function persist(){
   var S = App.state, d = {};
@@ -2812,6 +2830,12 @@ function start(){
   window.addEventListener('orientationchange', function(){ setTimeout(render, 250); });
 
   render();
+  if(App.sheetUpdated){
+    /* Write the new stamp straight away. Without this the migration would run
+       again on every load until the coach happened to change something. */
+    persist();
+    say('Loaded the updated game sheet — your notes and eligibility were kept');
+  }
 }
 
 if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){
