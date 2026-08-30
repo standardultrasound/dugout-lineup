@@ -65,24 +65,74 @@ var SLOTY = {CF:0.02,LF:0.075,RF:0.075,SS:0.315,'2B':0.315,'3B':0.515,'1B':0.515
 var AVAIL = ['Available','Absent','Arriving late','Leaving early','Injured','Batting only','Defense only','Selected innings'];
 var OUT_STATES = {Absent:1, Injured:1};
 
-/* Seed roster.
+/* Roster and season statistics.
+   Batting, pitching, fielding and position innings are transcribed from
+   "Philly Dragons 8U Spring 2026 Stats", the GameChanger season export.
+   Coach ratings are judgement calls, not from that export.
+
    [id, jersey, first, last, batting, pitching, fielding, positionInnings, ratings, trend]
-   batting  [GP,PA,AB,H,2B,3B,HR,RBI,R,BB,SO,QAB,contactPct,hardHit,pitchesSeen]
+   batting  [GP,PA,AB,H,2B,3B,HR,RBI,R,BB,SO,QAB,contactPct,hardHit,pitchesSeen,HBP,SF]
    pitching [IP,BF,pitches,ERA,WHIP,strikePct,fpsPct,SO,BB,H,ER,WP]
    fielding [chances,A,PO,fpct,E]
+   positionInnings are baseball innings, so 2.2 is two and two thirds.
    ratings  [contact,power,speed,infield,outfield,pitching,catching,awareness,devPriority] */
 var SEED = [
-  ['ritz',7,'Ritz','Everhart',[12,24,18,8,2,1,0,7,11,5,3,15,83.3,5,92],['4.1',22,78,4.15,1.62,58,52,6,6,5,2,2],[24,6,16,0.917,2],{CF:'22.0','2B':'8.0',SS:'6.0',P:'4.1',LF:'3.0'},[4,3,5,4,5,3,2,4,2],'up'],
-  ['lucas',12,'Lucas','Fritzinger',[12,26,20,7,1,0,1,9,8,6,5,14,75.0,4,104],['6.0',30,112,3.00,1.33,61,55,9,5,7,2,1],[31,9,20,0.935,2],{C:'20.0','1B':'14.0',P:'6.0','3B':'2.0'},[4,4,3,4,3,4,5,4,2],'flat'],
-  ['eli',3,'Eli','Maslennikov',[11,23,17,6,2,0,0,5,7,5,6,12,70.6,3,99],['8.1',38,141,2.16,1.08,64,59,13,4,5,2,0],[27,11,14,0.926,2],{P:'8.1','3B':'16.0','2B':'10.0',SS:'4.0'},[3,3,4,4,3,5,2,4,2],'up'],
-  ['will',21,'Will','Kobetitsch',[12,42,33,12,3,1,1,14,13,7,7,24,78.8,9,168],null,[40,8,30,0.950,2],{'1B':'18.0',C:'16.0','3B':'6.0',LF:'2.0'},[4,5,3,4,3,2,4,4,2],'up'],
-  ['jj',9,'JJ','Tucker',[12,28,22,9,2,1,0,8,10,5,4,17,77.3,6,115],['3.2',19,71,5.40,1.80,55,48,4,5,4,3,3],[35,15,18,0.943,2],{SS:'30.0','2B':'6.0',P:'3.2'},[4,3,4,5,3,3,2,5,2],'flat'],
-  ['liam',5,'Liam','Daugila',[11,22,16,5,1,0,0,4,6,5,7,10,56.3,2,96],null,[18,6,9,0.833,3],{'2B':'20.0','1B':'8.0',RF:'4.0'},[2,2,3,3,3,2,2,3,4],'down'],
-  ['depew',14,'William','Depew',[12,25,19,7,1,0,0,6,7,5,5,13,73.7,4,101],['7.2',34,126,2.61,1.30,62,57,10,5,5,2,1],[26,10,14,0.923,2],{'3B':'22.0',P:'7.2','1B':'4.0',LF:'2.0'},[3,3,3,4,3,4,2,4,3],'flat'],
-  ['forrest',2,'Forrest','Tanner',[10,19,14,4,1,0,0,3,5,4,6,8,64.3,2,83],null,[12,2,8,0.833,2],{LF:'14.0',RF:'10.0',CF:'6.0'},[2,2,4,2,4,2,2,3,4],'up'],
-  ['jesse',18,'','Jesse',null,null,null,null,[3,3,3,3,3,3,3,3,5],null],
-  ['emory',24,'','Emory',null,null,null,null,[3,3,3,3,3,3,3,3,5],null],
-  ['vince',11,'Vincenzo','McDuff',[12,36,28,11,3,1,1,13,12,6,2,26,92.9,8,140],['5.0',24,88,3.60,1.40,60,54,7,4,3,2,1],[33,12,19,0.939,2],{CF:'18.0',SS:'12.0','2B':'8.0',P:'5.0'},[5,4,4,4,4,4,3,5,1],'up']
+  ['ritz',10,'Ritz','Everhart',
+    [11,28,18,8,2,0,0,5,10,9,3,16,83.33,3,111,1,0],
+    null,
+    [5,0,4,0.800,1],
+    {'1B':'1.0','2B':'4.0','3B':'1.1',SS:'12.0',LF:'9.0',CF:'10.0',RF:'2.0'},
+    [4,3,5,4,5,3,2,4,2],'flat'],
+  ['lucas',3,'Lucas','Fritzinger',
+    [12,33,23,12,3,0,1,12,8,8,7,21,69.57,9,128,1,1],
+    ['10.0',52,226,4.80,2.000,52.21,53.85,22,12,8,8,3],
+    [26,0,26,1.000,0],
+    {P:'10.0',C:'12.2','1B':'10.2','3B':'5.0',SS:'3.0',LF:'2.0'},
+    [4,4,3,4,3,4,5,4,2],'flat'],
+  ['eli',99,'Eli','Maslennikov',
+    [12,30,20,11,3,0,1,16,13,6,5,15,75.00,3,113,4,0],
+    ['10.1',65,245,11.03,3.194,62.86,67.69,20,10,23,19,0],
+    [7,2,5,1.000,0],
+    {P:'10.1','1B':'1.0','2B':'3.0','3B':'13.0',SS:'5.1',LF:'1.0',CF:'5.1',RF:'1.0'},
+    [3,3,4,4,3,5,2,4,2],'flat'],
+  ['will',7,'Will','Kobetitsch',
+    [13,38,33,15,1,2,0,16,14,4,7,13,78.79,4,117,1,0],
+    ['7.2',49,213,8.609,3.391,42.25,53.06,13,18,8,11,1],
+    [25,2,23,1.000,0],
+    {P:'7.2',C:'8.0','1B':'25.0','3B':'6.0',CF:'1.0',RF:'3.0'},
+    [4,5,3,4,3,2,4,4,2],'flat'],
+  ['jj',17,'JJ','Tucker',
+    [13,33,24,10,0,0,1,9,15,9,11,12,54.17,1,115,0,0],
+    ['7.2',70,288,18.78,6.000,40.28,35.71,10,27,19,24,2],
+    [11,2,7,0.818,2],
+    {P:'7.2','2B':'3.0',SS:'25.0',LF:'1.0',CF:'4.2',RF:'2.0'},
+    [4,3,4,5,3,3,2,5,2],'flat'],
+  ['liam',12,'Liam','Daugila',
+    [12,37,26,9,3,1,0,12,13,11,11,19,57.69,2,148,0,0],
+    ['6.2',45,160,11.70,4.200,47.50,55.56,7,13,15,13,2],
+    [11,1,10,1.000,0],
+    {P:'6.2','1B':'4.2','2B':'26.1','3B':'1.0',CF:'1.0',RF:'7.1'},
+    [2,2,3,3,3,2,2,3,4],'flat'],
+  ['depew',23,'William','Depew',
+    [12,33,23,8,1,0,0,7,9,8,10,13,56.52,3,122,2,0],
+    ['4.0',21,64,4.50,2.500,54.69,61.90,6,4,6,3,1],
+    [12,1,10,0.917,1],
+    {P:'4.0','2B':'1.0','3B':'24.2',LF:'2.1',CF:'7.2',RF:'1.0'},
+    [3,3,3,4,3,4,2,4,3],'flat'],
+  ['forrest',8,'Forrest','Tanner',
+    [11,28,24,8,2,0,0,8,6,4,9,17,62.50,4,102,0,0],
+    ['1.0',5,20,0.00,2.000,40.00,60.00,1,2,0,0,0],
+    [3,1,2,1.000,0],
+    {P:'1.0','2B':'4.0','3B':'1.0',LF:'19.2',CF:'2.0',RF:'5.0'},
+    [2,2,4,2,4,2,2,3,4],'flat'],
+  ['jesse',null,'','Jesse',null,null,null,null,[3,3,3,3,3,3,3,3,5],null],
+  ['emory',null,'','Emory',null,null,null,null,[3,3,3,3,3,3,3,3,5],null],
+  ['vince',1,'Vincenzo','McDuff',
+    [13,38,28,15,1,0,0,12,11,10,2,13,92.86,2,130,0,0],
+    ['3.0',14,57,2.00,2.000,56.14,57.14,4,3,3,1,2],
+    [33,0,32,0.970,1],
+    {P:'3.0',C:'14.0','2B':'8.0','3B':'2.0',SS:'6.0',LF:'2.2',CF:'7.0',RF:'3.0'},
+    [5,4,4,4,4,4,3,5,1],'flat']
 ];
 
 /* The game sheet the app starts from. Key order is the batting order;
@@ -134,10 +184,14 @@ function mkPlayer(r){
   var b = null;
   if(B){
     var GP = B[0], PA = B[1], AB = B[2], H = B[3], d2 = B[4], d3 = B[5], HR = B[6];
+    var BB = B[9], HBP = B[15] || 0, SF = B[16] || 0;
     var tb = (H - d2 - d3 - HR) + 2 * d2 + 3 * d3 + 4 * HR;
-    var obp = sd(H + B[9], PA), slg = sd(tb, AB);
-    b = {GP:GP, PA:PA, AB:AB, H:H, doubles:d2, triples:d3, HR:HR, RBI:B[7], runs:B[8], walks:B[9],
-      strikeouts:B[10], QAB:B[11], AVG:sd(H, AB), OBP:obp, SLG:slg,
+    /* On-base percentage counts hit-by-pitch, and sacrifice flies stay in the
+       denominator. Leaving either out understates a patient hitter. */
+    var obp = sd(H + BB + HBP, AB + BB + HBP + SF), slg = sd(tb, AB);
+    b = {GP:GP, PA:PA, AB:AB, H:H, doubles:d2, triples:d3, HR:HR, RBI:B[7], runs:B[8], walks:BB,
+      strikeouts:B[10], QAB:B[11], hitByPitch:HBP, sacFlies:SF,
+      AVG:sd(H, AB), OBP:obp, SLG:slg,
       OPS:(obp === null || slg === null) ? null : obp + slg,
       QABPercent:sd(100 * B[11], PA), contactPercent:B[12], hardHitBalls:B[13],
       pitchesSeen:B[14], pitchesPerPA:sd(B[14], PA)};
@@ -184,6 +238,14 @@ var ESC = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
 function e(s){
   return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function(c){ return ESC[c]; });
 }
+
+/* Not every player on the sheet has a jersey number. Show that honestly
+   rather than inventing one. jn is the bare number, jnTag the "#7" form. */
+function hasJersey(p){
+  return !!p && p.jerseyNumber !== null && p.jerseyNumber !== undefined && p.jerseyNumber !== '';
+}
+function jn(p){ return hasJersey(p) ? String(p.jerseyNumber) : '—'; }
+function jnTag(p){ return hasJersey(p) ? '#' + p.jerseyNumber : '—'; }
 
 /* ============================================================
    STORE
@@ -1041,7 +1103,8 @@ var FIELD_ALIASES = {
         HR:['hr','homerun','homeruns'], RBI:['rbi','rbis'], R:['r','runs','run'],
         BB:['bb','walks','walk'], SO:['so','k','ks','strikeouts','strikeout'],
         QAB:['qab','qabs','qualityatbats'], CP:['c%','contact%','contactpct','contact'],
-        HH:['hhb','hardhit','hardhitballs'], PS:['ps','pitchesseen','pseen']},
+        HH:['hhb','hardhit','hardhitballs'], PS:['ps','pitchesseen','pseen'],
+        HBP:['hbp','hitbypitch'], SF:['sf','sacfly','sacrificefly']},
   pitching: {IP:['ip','inningspitched'], BF:['bf','battersfaced','tbf'],
         PIT:['#p','p','pitches','pitchcount','np'], ERA:['era'], WHIP:['whip'],
         SP:['s%','strike%','strikepct','strikes%'],
@@ -1051,6 +1114,10 @@ var FIELD_ALIASES = {
   fielding: {TC:['tc','chances','totalchances'], A:['a','assists','ast'], PO:['po','putouts'],
         FPCT:['fpct','fld%','fielding%','fieldingpct','fpc'], E:['e','errors','err']}
 };
+
+/* The Fielding section ends with a column per position holding innings played
+   there. Those drive position experience, so they are worth picking up. */
+var POS_COL = {p:'P', c:'C', '1b':'1B', '2b':'2B', '3b':'3B', ss:'SS', lf:'LF', cf:'CF', rf:'RF'};
 
 function matchField(group, name){
   var n = norm(name);
@@ -1082,10 +1149,14 @@ function parseRoster(text){
       else if(/field|defen/i.test(grp)) section = 'fielding';
     }
     var key = matchField('id', name);
-    if(key) cols.push({i:i, group:'id', key:key});
-    else if(section){
-      var k2 = matchField(section, name);
-      if(k2) cols.push({i:i, group:section, key:k2});
+    if(key){ cols.push({i:i, group:'id', key:key}); return; }
+    if(!section) return;
+    var k2 = matchField(section, name);
+    if(k2){ cols.push({i:i, group:section, key:k2}); return; }
+    /* Only inside Fielding does a bare "2B" mean innings at second base
+       rather than doubles. */
+    if(section === 'fielding' && POS_COL[norm(name)]){
+      cols.push({i:i, group:'posinn', key:POS_COL[norm(name)]});
     }
   });
 
@@ -1095,7 +1166,7 @@ function parseRoster(text){
   var used = {}, rows = [], skipped = 0;
   lines.slice(2).forEach(function(line){
     var c = splitCsv(line);
-    var v = {id:{}, batting:{}, pitching:{}, fielding:{}};
+    var v = {id:{}, batting:{}, pitching:{}, fielding:{}, posinn:{}};
     cols.forEach(function(col){ v[col.group][col.key] = nz(c[col.i]); });
 
     var first = v.id.first, last = v.id.last;
@@ -1117,18 +1188,30 @@ function parseRoster(text){
     var F = v.fielding, hasF = Object.keys(F).some(function(k2){ return F[k2] !== null; });
     var z = function(x){ return x === null ? 0 : x; };
 
+    /* Keep only positions actually played, so "no innings there" stays
+       distinguishable from "zero innings recorded". */
+    var PI = {}, hasPI = false;
+    Object.keys(v.posinn).forEach(function(k){
+      var n = num(v.posinn[k]);
+      if(n) { PI[k] = String(v.posinn[k]); hasPI = true; }
+    });
+
+    /* A player listed with an all-zero pitching line never took the mound;
+       treat that as no pitching rather than a 0.00 ERA. */
+    var pitched = hasP && num(P.IP) > 0;
+
     rows.push([
       id,
-      jersey === null ? '' : jersey,
+      jersey === null ? null : jersey,
       first || '',
       last,
       hasB ? [z(num(B.GP)), z(num(B.PA)), z(num(B.AB)), z(num(B.H)), z(num(B.d2)), z(num(B.d3)),
               z(num(B.HR)), z(num(B.RBI)), z(num(B.R)), z(num(B.BB)), z(num(B.SO)), z(num(B.QAB)),
-              num(B.CP), z(num(B.HH)), z(num(B.PS))] : null,
-      hasP ? [P.IP === null ? '0.0' : String(P.IP), z(num(P.BF)), z(num(P.PIT)), num(P.ERA), num(P.WHIP),
+              num(B.CP), z(num(B.HH)), z(num(B.PS)), z(num(B.HBP)), z(num(B.SF))] : null,
+      pitched ? [String(P.IP), z(num(P.BF)), z(num(P.PIT)), num(P.ERA), num(P.WHIP),
               num(P.SP), num(P.FPS), z(num(P.SO)), z(num(P.BB)), z(num(P.H)), z(num(P.ER)), z(num(P.WP))] : null,
-      hasF ? [z(num(F.TC)), z(num(F.A)), z(num(F.PO)), num(F.FPCT), z(num(F.E))] : null,
-      {},
+      (hasF || hasPI) ? [z(num(F.TC)), z(num(F.A)), z(num(F.PO)), num(F.FPCT), z(num(F.E))] : null,
+      PI,
       [3,3,3,3,3,3,3,3,3],
       'flat'
     ]);
@@ -1377,7 +1460,7 @@ function screenPlayers(ctx){
     var bg = OUT_STATES[av] ? '#FEE2E2' : (p.isNewPlayer ? '#DBEAFE' : col(pos || 'REST'));
     var fg = OUT_STATES[av] ? '#991B1B' : (p.isNewPlayer ? '#1E40AF' : colT(pos || 'REST'));
     return '<button ' + C(function(){ up({sheet:p.id, sheetTab:'OVERVIEW', sheetMore:false}); }) + ' style="text-align:left;background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:10px 12px;display:flex;align-items:center;gap:10px;min-height:56px">' +
-      '<span style="width:34px;height:34px;flex:none;border-radius:9px;background:#0F2440;color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center">' + e(p.jerseyNumber) + '</span>' +
+      '<span style="width:34px;height:34px;flex:none;border-radius:9px;background:#0F2440;color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center">' + e(jn(p)) + '</span>' +
       '<span style="flex:1;min-width:0">' +
         '<span style="display:block;font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + e(p.displayName) + '</span>' +
         '<span style="display:block;font-size:11px;color:#64748B">' + e(sub) + '</span>' +
@@ -1442,7 +1525,7 @@ function screenSetup(ctx){
 
     return '<div style="background:' + (OUT_STATES[state] ? '#FFF7F7' : '#fff') + ';border:1px solid #E2E8F0;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:9px">' +
       '<div style="display:flex;align-items:center;gap:9px">' +
-        '<span style="width:30px;height:30px;flex:none;border-radius:8px;background:#0F2440;color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center">' + e(p.jerseyNumber) + '</span>' +
+        '<span style="width:30px;height:30px;flex:none;border-radius:8px;background:#0F2440;color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center">' + e(jn(p)) + '</span>' +
         '<span style="flex:1;min-width:0;font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + e(p.displayName) + '</span>' +
         '<select ' + CH(function(ev){ setAvail(p.id, ev.target.value); }) + ' style="flex:none;height:40px;border:1px solid #CBD5E1;border-radius:9px;background:#fff;font-size:12px;font-weight:700;padding:0 6px;max-width:148px">' + opts + '</select>' +
       '</div>' + chips +
@@ -1571,7 +1654,7 @@ function tabBatting(ctx){
         }) + ' style="flex:1;min-width:0;text-align:left;border:none;background:none;padding:0">' +
         '<span style="display:flex;align-items:center;gap:6px">' +
           '<span style="font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + e(p.displayName) + '</span>' +
-          '<span style="font-size:11px;font-weight:700;color:#94A3B8">#' + e(p.jerseyNumber) + '</span>' +
+          '<span style="font-size:11px;font-weight:700;color:#94A3B8">' + e(jnTag(p)) + '</span>' +
         '</span>' +
         '<span style="display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap">' +
           '<span style="font-size:10px;font-weight:800;padding:2px 6px;border-radius:5px;background:' + (p.isNewPlayer ? '#DBEAFE' : '#EEF2FF') + ';color:' + (p.isNewPlayer ? '#1E40AF' : '#3730A3') + '">' + e(badge) + '</span>' +
@@ -1652,7 +1735,7 @@ function defChip(ctx, id, pos, innN, w, hHandle, hChip){
     '<button ' + PD(function(ev){ startDrag(ev, 'def', id, {inning:innN}); }) + ' aria-label="Drag ' + e(chipName(id)) + '" style="flex:none;width:' + (w ? 20 : 18) + 'px;height:' + hHandle + 'px;border:none;background:rgba(255,255,255,.6);border-radius:6px;color:#33455E;font-size:11px;font-weight:800;touch-action:none;cursor:grab;padding:0">⠿</button>' +
     '<button ' + C(function(){ up({sheet:id, sheetTab:'OVERVIEW', sheetMore:false}); }) + ' style="flex:1;min-width:0;border:none;background:none;text-align:left;padding:0">' +
       '<span style="display:block;font-size:11px;font-weight:800;color:' + colT(pos) + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2">' + e(chipName(id)) + '</span>' +
-      '<span style="display:block;font-size:9px;font-weight:700;color:' + colT(pos) + ';opacity:.72">#' + e(p.jerseyNumber) + '</span>' +
+      '<span style="display:block;font-size:9px;font-weight:700;color:' + colT(pos) + ';opacity:.72">' + e(jnTag(p)) + '</span>' +
     '</button>' +
     '<button ' + C(function(){ toggleLock(innN, id); }) + ' aria-label="Lock" style="flex:none;width:16px;height:' + hHandle + 'px;border:none;background:none;color:' + colT(pos) + ';font-size:10px;font-weight:800;padding:0">' + (lk ? '▣' : '□') + '</button>' +
   '</div>';
@@ -1751,7 +1834,7 @@ function gridView(ctx){
       return '<tr><td style="position:sticky;left:0;z-index:2;background:#fff;padding:6px 11px;border-bottom:1px solid #E7ECF3;border-right:1px solid #D8E0EA">' +
         '<button ' + C(function(){ up({sheet:id, sheetTab:'OVERVIEW', sheetMore:false}); }) + ' style="border:none;background:none;text-align:left;padding:0">' +
         '<span style="display:block;font-size:13px;font-weight:700;color:#0F2440">' + e(p.displayName) + '</span>' +
-        '<span style="display:block;font-size:10px;font-weight:700;color:#94A3B8">#' + e(p.jerseyNumber) + ' · ' + (A.def[id] || 0) + ' inn · ' + (A.rest[id] || 0) + ' rest</span>' +
+        '<span style="display:block;font-size:10px;font-weight:700;color:#94A3B8">' + e(jnTag(p)) + ' · ' + (A.def[id] || 0) + ' inn · ' + (A.rest[id] || 0) + ' rest</span>' +
         '</button></td>' + cells + '</tr>';
     }).join('');
   } else {
@@ -1948,7 +2031,7 @@ function shareLineup(){
   var lines = ['Dugout Lineup — vs ' + st.opponent, st.date + ' ' + st.time + ' · ' + st.field, ''];
   lines.push('BATTING ORDER');
   battingSlots().forEach(function(slot, i){
-    lines.push((i + 1) + '. ' + App.byId[slot.id].displayName + ' #' + App.byId[slot.id].jerseyNumber);
+    lines.push((i + 1) + '. ' + App.byId[slot.id].displayName + ' ' + jnTag(App.byId[slot.id]));
   });
   lines.push('');
   lines.push('DEFENSE BY INNING');
@@ -2156,7 +2239,7 @@ function screenRankings(ctx){
       '<span style="flex:none;width:22px;font-size:15px;font-weight:800;color:#0F2440">' + (i + 1) + '</span>' +
       '<span style="flex:1;min-width:0">' +
         '<span style="display:block;font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + e(p.displayName) + '</span>' +
-        '<span style="display:block;font-size:10.5px;font-weight:700;color:#94A3B8">#' + e(p.jerseyNumber) + ' · ' + e(rd.metric.s(p) || '—') + '</span>' +
+        '<span style="display:block;font-size:10.5px;font-weight:700;color:#94A3B8">' + e(jnTag(p)) + ' · ' + e(rd.metric.s(p) || '—') + '</span>' +
       '</span>' +
       '<span style="flex:none;text-align:right">' +
         '<span style="display:block;font-size:14px;font-weight:800;color:#0F2440;font-variant-numeric:tabular-nums">' + e(rd.metric.fmt(x.v)) + '</span>' +
@@ -2388,6 +2471,7 @@ function sheetView(ctx){
     add('Trend', p.trend === 'up' ? 'Up' : (p.trend === 'down' ? 'Down' : 'Steady'));
     if(S.sheetMore){
       add('2B', String(p.b.doubles)); add('3B', String(p.b.triples)); add('HR', String(p.b.HR));
+      add('HBP', String(p.b.hitByPitch)); add('SF', String(p.b.sacFlies));
       add('Hard hit', String(p.b.hardHitBalls)); add('Pitches seen', String(p.b.pitchesSeen));
       add('P / PA', f2(p.b.pitchesPerPA)); add('QAB', String(p.b.QAB)); add('GP', String(p.b.GP));
     }
@@ -2526,7 +2610,7 @@ function sheetView(ctx){
     '<div style="position:relative;background:#F1F4F8;border-radius:20px 20px 0 0;max-height:92%;display:flex;flex-direction:column;animation:rise .22s ease-out;box-shadow:0 -10px 34px rgba(15,36,64,.28)">' +
       '<div style="flex:none;background:#0F2440;color:#fff;border-radius:20px 20px 0 0;padding:12px 14px">' +
         '<div style="display:flex;align-items:flex-start;gap:10px">' +
-          '<span style="flex:none;width:38px;height:38px;border-radius:10px;background:#1D4ED8;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800">#' + e(p.jerseyNumber) + '</span>' +
+          '<span style="flex:none;width:38px;height:38px;border-radius:10px;background:#1D4ED8;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800">' + e(jnTag(p)) + '</span>' +
           '<span style="flex:1;min-width:0">' +
             '<span style="display:flex;align-items:center;gap:7px">' +
               '<span style="font-size:18px;font-weight:800">' + e(p.displayName) + '</span>' +
