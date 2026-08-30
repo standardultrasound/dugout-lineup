@@ -2307,7 +2307,7 @@ function screenTeam(ctx){
     {k:'Season', v:'Spring 2026'},
     {k:'Rostered', v:App.roster.length + ' players'},
     {k:'New players', v:App.roster.filter(function(p){ return p.isNewPlayer; }).length + ' (no stats yet)'},
-    {k:'Stat source', v:S.csvSource ? 'Imported · ' + S.csvSource : 'Seed data · 8U Spring 2026 shape'},
+    {k:'Stat source', v:S.csvSource ? 'Imported · ' + S.csvSource : 'Philly Dragons 8U Spring 2026 export'},
     {k:'Storage', v:App.canStore ? 'Saved on this device' : 'Blocked by this browser'}
   ].map(function(t){
     return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 13px;border-bottom:1px solid #F1F5F9">' +
