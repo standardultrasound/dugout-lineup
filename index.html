@@ -1490,7 +1490,9 @@ function refreshFallStats(){
   fetch('fall-2026-stats.csv?t=' + Date.now(), {cache:'no-store'})
     .then(function(r){ return r.ok ? r.text() : null; })
     .then(function(t){
-      if(!t || t === App.fallText) return;
+      /* Same data in different line endings is not an update. */
+      var canon = function(x){ return String(x).replace(/\r\n/g, '\n').replace(/^﻿/, '').trim(); };
+      if(!t || canon(t) === canon(App.fallText)) return;
       try{
         parseSeason(t);
       }catch(err){
