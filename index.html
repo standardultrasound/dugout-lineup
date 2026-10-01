@@ -524,20 +524,35 @@ function clearCache(){
   try{ localStorage.removeItem(CACHE_KEY); }catch(err){}
 }
 
-/* Swap in a newer Fall CSV (from the site or a file) without losing the
-   coach's plan: new players join availability and the batting order, and
-   anyone no longer on the roster is cleaned out of the plan. */
-function adoptFall(text, label){
-  buildAll(text, App.springText);
-  var s = App.state;
+/* A stored batting order (saved state, the game sheet, a saved version)
+   fitted to the current roster: anyone no longer on the team is dropped and
+   anyone missing joins at the end, so nobody silently loses their at-bats. */
+function fitOrder(order){
+  var out = order.filter(isActive);
+  App.activeIds.forEach(function(id){ if(out.indexOf(id) < 0) out.push(id); });
+  return out;
+}
+
+/* Fit the coach's lineup to the current Fall roster without losing the
+   plan: new players join availability and the batting order, and anyone no
+   longer on the roster is cleaned out of the order and the plan. Returns the
+   players this device had never seen. */
+function fitToRoster(s){
+  var added = [];
   App.activeIds.forEach(function(id){
-    if(s.avail[id] === undefined) s.avail[id] = 'Available';
-    if(s.order.indexOf(id) < 0) s.order.push(id);
+    if(s.avail[id] === undefined){ s.avail[id] = 'Available'; added.push(id); }
   });
-  s.order = s.order.filter(isActive);
+  s.order = fitOrder(s.order);
   s.plan.forEach(function(m){
     Object.keys(m).forEach(function(id){ if(!isActive(id)) delete m[id]; });
   });
+  return added;
+}
+
+/* Swap in a newer Fall CSV (from the site or a file). */
+function adoptFall(text, label){
+  buildAll(text, App.springText);
+  fitToRoster(App.state);
   App.statSource = label;
   persist();
 }
@@ -570,8 +585,7 @@ function boot(savedOverride){
 
   var avail = {};
   App.activeIds.forEach(function(id){ avail[id] = 'Available'; });
-  var order = ACTIVE.filter(isActive);
-  App.activeIds.forEach(function(id){ if(order.indexOf(id) < 0) order.push(id); });
+  var order = fitOrder(ACTIVE);
 
   var base = {
     screen:'games', tab:'defense', inning:1, view:'field', gridMode:'player',
@@ -626,6 +640,11 @@ function boot(savedOverride){
   }
 
   if(saved) Object.assign(base, saved);
+  /* A redeployed snapshot can change the roster without adoptFall ever
+     running: the site file then matches the snapshot, so the fetch on load
+     has nothing to adopt. Fit the saved lineup here too, or a returning or
+     new player would be left out of availability and the batting order. */
+  App.rosterAdded = saved ? fitToRoster(base) : [];
   base.seedStamp = SEED_STAMP;
   base.prefVersion = PREF_VERSION;
   base.hist = []; base.fut = [];
@@ -1228,7 +1247,7 @@ function saveVersion(){
 function loadVersion(i){
   var v = App.state.versions[i];
   if(!v) return;
-  mut(function(){ return {order:v.order.slice()}; }, 'Loaded ' + v.name);
+  mut(function(){ return {order:fitOrder(v.order)}; }, 'Loaded ' + v.name);
 }
 
 /* ---------- availability ---------- */
@@ -1944,7 +1963,7 @@ function tabBatting(ctx){
   var actions = [
     {label:'Regenerate unlocked', on:function(){ applyOrder(st.lineupMode); }},
     {label:'Copy previous game', on:function(){
-      mut(function(){ return {order:ACTIVE.filter(isActive)}; }, 'Previous game order restored');
+      mut(function(){ return {order:fitOrder(ACTIVE)}; }, 'Previous game order restored');
     }},
     {label:'Rotate lineup', on:function(){ rotateOrder(); }},
     {label:'Save version', on:function(){ saveVersion(); }},
@@ -3359,6 +3378,10 @@ function start(){
        again on every load until the coach happened to change something. */
     persist();
     say('Loaded the updated roster and game sheet — notes, ratings and eligibility were kept');
+  } else if(App.rosterAdded.length){
+    /* Saved once, so the notice shows on the first load only. */
+    persist();
+    say(App.rosterAdded.map(short).join(', ') + ' joined the roster — added to availability and the batting order');
   }
   refreshFallStats();
 }
